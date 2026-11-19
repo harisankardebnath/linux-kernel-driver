@@ -126,6 +126,18 @@ jobs:
             find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
           )
           tar -czf reverse-exe-arm64-kernel-matrix.tar.gz -C release .
+      - name: Generate embedded diagnostic shell loaders
+        run: |
+          chmod +x scripts/make-embedded-loader.sh
+          scripts/make-embedded-loader.sh collected loaders
+      - name: Upload embedded diagnostic loaders
+        uses: actions/upload-artifact@v4
+        with:
+          name: reverse-exe-embedded-sh-loaders
+          path: loaders/*.sh
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload combined matrix archive
         uses: actions/upload-artifact@v4
         with:
