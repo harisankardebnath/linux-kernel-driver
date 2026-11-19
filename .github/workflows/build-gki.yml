@@ -44,7 +44,7 @@ jobs:
         if: steps.select.outputs.run == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex git libelf-dev libssl-dev lz4 python3 rsync unzip zip openjdk-17-jdk
+          sudo apt-get install -y bc bison build-essential ccache curl flex git kmod libelf-dev libssl-dev lz4 python3 rsync unzip zip openjdk-17-jdk
           mkdir -p "$HOME/bin"
           curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
           chmod a+x "$HOME/bin/repo"
@@ -71,10 +71,27 @@ jobs:
       - name: Collect reverse_exe module and metadata
         if: always() && steps.select.outputs.run == 'true'
         run: |
-          mkdir -p "artifacts/${{ matrix.version }}"
-          find sources/${{ matrix.version }} artifacts/${{ matrix.version }} -type f -name 'reverse_exe.ko' -exec cp -v {} "artifacts/${{ matrix.version }}/reverse_exe-${{ matrix.version }}-arm64.ko" \; 2>/dev/null || true
-          find "artifacts/${{ matrix.version }}" -type f -name '*.ko' -print > "artifacts/${{ matrix.version }}/modules-list.txt" || true
-          git -C "sources/${{ matrix.version }}/common" rev-parse HEAD > "artifacts/${{ matrix.version }}/kernel-commit.txt" 2>/dev/null || true
+          set -euo pipefail
+          DEST="$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}"
+          mkdir -p "$DEST"
+          FOUND=0
+          while IFS= read -r -d '' module; do
+            release="$(modinfo -F vermagic "$module" | awk '{print $1}')"
+            version="$(printf '%s\n' "$release" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' || true)"
+            if [ -z "$version" ]; then
+              echo "Could not parse kernel version from $module (vermagic: $release)" >&2
+              continue
+            fi
+            cp -v "$module" "$DEST/reverse_exe-$version.ko"
+            printf '%s\n' "$release" > "$DEST/kernelrelease-$version.txt"
+            sha256sum "$DEST/reverse_exe-$version.ko" > "$DEST/SHA256SUMS-$version"
+            FOUND=1
+          done < <(find "sources/${{ matrix.version }}" -type f -name 'reverse_exe.ko' -print0 2>/dev/null)
+          find "sources/${{ matrix.version }}" -type f -name '*.ko' -print > "$DEST/modules-list.txt" || true
+          git -C "sources/${{ matrix.version }}/common" rev-parse HEAD > "$DEST/kernel-commit.txt" 2>/dev/null || true
+          if [ "$FOUND" -eq 0 ]; then
+            echo "No reverse_exe.ko was produced. This workflow did not create a module artifact." >&2
+          fi
       - name: Upload artifacts
         if: always() && steps.select.outputs.run == 'true'
         uses: actions/upload-artifact@v4
