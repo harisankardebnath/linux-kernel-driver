@@ -98,3 +98,38 @@ jobs:
           path: artifacts/linux-${{ matrix.version }}/
           if-no-files-found: error
           retention-days: 14
+
+  collect:
+    name: Collect all kernel artifacts
+    needs: [prepare, build]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download all successful matrix artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: reverse_exe-linux-*-arm64
+          path: collected
+          merge-multiple: false
+
+      - name: Create combined archive and manifest
+        run: |
+          set -euo pipefail
+          test -d collected
+          find collected -type f -name '*.ko' -print | sort > collected-modules.txt
+          test -s collected-modules.txt
+          mkdir -p release
+          cp collected-modules.txt release/MODULES.txt
+          cp -R collected/* release/
+          (
+            cd release
+            find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+          )
+          tar -czf reverse-exe-arm64-kernel-matrix.tar.gz -C release .
+      - name: Upload combined matrix archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: reverse-exe-arm64-all-kernels
+          path: reverse-exe-arm64-kernel-matrix.tar.gz
+          if-no-files-found: error
+          retention-days: 30
