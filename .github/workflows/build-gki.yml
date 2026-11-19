@@ -30,6 +30,12 @@ jobs:
           sudo ln -sf /usr/bin/ld.lld-14 /usr/local/bin/ld.lld
           sudo ln -sf /usr/bin/clang-14 /usr/local/bin/clang
           sudo ln -sf /usr/bin/llvm-ar-14 /usr/local/bin/llvm-ar
+          sudo ln -sf /usr/bin/llvm-objdump-14 /usr/local/bin/llvm-objdump
+          sudo ln -sf /usr/bin/llvm-nm-14 /usr/local/bin/llvm-nm
+          sudo ln -sf /usr/bin/llvm-objcopy-14 /usr/local/bin/llvm-objcopy
+          command -v llvm-objdump
+          command -v llvm-nm
+          command -v llvm-objcopy
           command -v ld.lld
           ld.lld --version
           mkdir -p "$HOME/bin"
