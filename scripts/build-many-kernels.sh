@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build one different .ko for every supplied prepared kernel build tree.
+# Build a separate reverse_exe module for each supplied prepared kernel tree.
+# Each artifact is named reverse_exe-<major>.<minor>.<patch>.ko and stored
+# in a directory keyed by the full exact kernel release.
 # Usage: scripts/build-many-kernels.sh <kernel-build-tree-1> [kernel-build-tree-2 ...]
 
 if [ "$#" -lt 1 ]; then
@@ -14,7 +16,7 @@ FAILED=0
 
 for KDIR in "$@"; do
   echo
-  echo "===== Separate module build: $KDIR ====="
+  echo "===== Separate reverse_exe build: $KDIR ====="
   if "$PROJECT_ROOT/scripts/build-module.sh" "$KDIR"; then
     echo "SUCCESS: $KDIR"
   else
