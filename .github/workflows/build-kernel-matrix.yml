@@ -25,7 +25,7 @@ jobs:
     steps:
       - id: matrix
         env:
-          TARGETS: ${{ inputs.targets || "4.14,4.19,5.4,5.10,5.15,6.1" }}
+          TARGETS: ${{ inputs.targets || '4.14,4.19,5.4,5.10,5.15,6.1' }}
         run: |
           python3 - <<'PY'
           import json, os
