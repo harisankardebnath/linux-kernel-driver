@@ -33,6 +33,13 @@ jobs:
           sudo ln -sf /usr/bin/llvm-objdump-14 /usr/local/bin/llvm-objdump
           sudo ln -sf /usr/bin/llvm-nm-14 /usr/local/bin/llvm-nm
           sudo ln -sf /usr/bin/llvm-objcopy-14 /usr/local/bin/llvm-objcopy
+          # Expose every installed LLVM 14 utility under its unversioned name.
+          # Kernel build rules call tools such as llvm-strip directly.
+          for tool in /usr/bin/llvm-*-14; do
+            [ -x "$tool" ] || continue
+            name="$(basename "$tool" -14)"
+            sudo ln -sf "$tool" "/usr/local/bin/$name"
+          done
           command -v llvm-objdump
           command -v llvm-nm
           command -v llvm-objcopy
