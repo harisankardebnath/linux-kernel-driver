@@ -79,7 +79,11 @@ mkdir -p "$TMPDIR_VANTEX" || {{
     say '[ERROR] Cannot create temporary directory.'
     exit 1
 }}
-PAYLOAD_START=$((PAYLOAD_OFFSET + 1))
+# PAYLOAD_OFFSET is zero-padded; strip leading zeroes to avoid
+# POSIX shell treating the value as octal during arithmetic.
+PAYLOAD_DEC="$(printf '%s' "$PAYLOAD_OFFSET" | sed 's/^0*//')"
+[ -n "$PAYLOAD_DEC" ] || PAYLOAD_DEC=0
+PAYLOAD_START=$((PAYLOAD_DEC + 1))
 tail -c "+$PAYLOAD_START" "$SELF_PATH" > "$TMP_KO" 2>/dev/null || {{
     rm -f "$TMP_KO"
     say '[ERROR] Embedded payload extraction failed.'
