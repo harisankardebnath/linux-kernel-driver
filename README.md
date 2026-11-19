@@ -1,7 +1,7 @@
 # reverse_exe — Android/Linux kernel diagnostic driver
 
 **Module release:** 2.0.0  
-**Module filename:** `reverse_exe-<kernelrelease>-arm64.ko`  
+**Module filename pattern:** `reverse_exe-5.10.x.ko` for the Linux 5.10 series  
 **Device node:** `/dev/reverse_exe`
 
 ## Scope
@@ -19,14 +19,16 @@ Build a separate module for each exact prepared kernel build tree:
 For several kernels:
 
 ```bash
-./scripts/build-many-kernels.sh /kernels/4.14/out /kernels/4.19/out /kernels/5.4/out /kernels/5.10/out
+./scripts/build-many-kernels.sh /kernels/5.10.218/out /kernels/5.10.219/out /kernels/5.10.220/out
 ```
 
-Artifacts are written under `artifacts/per-kernel/<kernelrelease>-arm64/`. The output uses the exact kernel release reported by Kbuild. A kernel version alone does not guarantee ABI compatibility; use matching source, configuration, generated headers, Module.symvers, compiler and Android KMI/signing policy.
+For a 5.10.218 target, the module filename is `reverse_exe-5.10.218.ko`; for 5.10.219 it is `reverse_exe-5.10.219.ko`. Each artifact is stored in a directory named after the full exact kernel release so that OEM builds with the same numeric version do not overwrite one another.
+
+A kernel version alone does not guarantee ABI compatibility. Each module must be built against the matching source, configuration, generated headers, Module.symvers, compiler and Android KMI/signing policy. Never assume one compiled .ko works on every 5.10.x device.
 
 ## Current Android Common Kernel workflow
 
-GitHub Actions currently has manual build targets for ACK branches 5.10, 5.15 and 6.1. This is not yet a complete build matrix for every upstream version or OEM device. Other releases require their own exact prepared kernel source/build tree.
+GitHub Actions currently has manual build targets for ACK branches 5.10, 5.15 and 6.1. This is not a complete build matrix for every upstream version or OEM device. Other releases require their own exact prepared kernel source/build tree.
 
 ## Motorola Moto G64 5G
 
