@@ -5,11 +5,6 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      versions:
-        description: "Build reverse_exe-5.10.ko for Android 12 ARM64 Common Kernel 5.10"
-        required: true
-        default: "5.10"
-        type: string
 
 permissions:
   contents: read
@@ -27,21 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select requested version
-        id: select
-        env:
-          REQUESTED: ${{ inputs.versions || '5.10' }}
-          VERSION: ${{ matrix.version }}
-        run: |
-          python3 - <<'PY'
-          import os
-          values = [v.strip() for v in os.environ["REQUESTED"].split(",")]
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write("run=" + str(os.environ["VERSION"] in values).lower() + "\\n")
-          PY
-
       - name: Install build dependencies
-        if: steps.select.outputs.run == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential clang-14 lld-14 llvm-14 flex git kmod libelf-dev libssl-dev python3 rsync
@@ -51,7 +32,6 @@ jobs:
           echo "$HOME/bin" >> "$GITHUB_PATH"
 
       - name: Fetch Android 12 Common Kernel 5.10
-        if: steps.select.outputs.run == 'true'
         env:
           BRANCH: ${{ matrix.branch }}
         run: |
@@ -61,11 +41,9 @@ jobs:
           repo sync -c --no-tags -j2
 
       - name: Integrate reverse_exe
-        if: steps.select.outputs.run == 'true'
         run: bash ./scripts/integrate-driver.sh "$GITHUB_WORKSPACE/sources/${{ matrix.version }}"
 
       - name: Configure Android 12 ARM64 kernel
-        if: steps.select.outputs.run == 'true'
         run: |
           set -euo pipefail
           cd "sources/${{ matrix.version }}"
@@ -77,7 +55,6 @@ jobs:
           grep -E '^(CONFIG_ARM64=y|CONFIG_REVERSE_EXE=m|CONFIG_MODVERSIONS=)' "$KOUT/.config" || true
 
       - name: Build kernel modules only (no vmlinux or GKI image)
-        if: steps.select.outputs.run == 'true'
         run: |
           set -euo pipefail
           cd "sources/${{ matrix.version }}"
@@ -87,7 +64,6 @@ jobs:
           test -f "$KOUT/drivers/misc/reverse_exe/reverse_exe.ko"
 
       - name: Collect ONLY reverse_exe.ko
-        if: success() && steps.select.outputs.run == 'true'
         run: |
           set -euo pipefail
           KOUT="$GITHUB_WORKSPACE/sources/${{ matrix.version }}/out/android12-5.10/common"
@@ -104,7 +80,6 @@ jobs:
           modinfo "$STAGE/reverse_exe-5.10.ko" > "$STAGE/modinfo.txt"
 
       - name: Upload module only (.ko)
-        if: success() && steps.select.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: reverse_exe-android12-5.10-module
