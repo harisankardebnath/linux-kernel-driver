@@ -63,8 +63,6 @@ term_size() {
   set -- $(stty size 2>/dev/null)
   ROWS=${1:-24}; COLS=${2:-80}
   case "$ROWS:$COLS" in *[!0-9:]*|:*) ROWS=24; COLS=80;; esac
-  [ "$ROWS" -lt 18 ] && ROWS=18
-  [ "$COLS" -lt 42 ] && COLS=42
 }
 center() {
   row=$1; raw=$2
@@ -77,8 +75,8 @@ center() {
 draw_menu() {
   term_size
   printf '%b' "${ESC}[2J${ESC}[H${ESC}[?25l"
-  top=$(( (ROWS - 17) / 2 + 1 ))
-  [ "$top" -lt 1 ] && top=1
+  # Keep the compact panel top-centred instead of vertically centring it.
+  top=2
   STATUS_ROW=$((top+6)); MENU_ROW=$((top+9)); FOOT_ROW=$((top+16))
   center "$top" "${CYAN}${BOLD}╔══════════════════════════════════════╗${RESET}"
   center "$((top+1))" "${CYAN}${BOLD}║             V A N T E X              ║${RESET}"
@@ -86,7 +84,7 @@ draw_menu() {
   center "$((top+3))" "${CYAN}${BOLD}╚══════════════════════════════════════╝${RESET}"
   center "$((top+5))" "${CYAN}Kernel${RESET}  $(uname -r | cut -d- -f1)"
   draw_status
-  center "$((top+7))" "${CYAN}────────────────────────────────────────${RESET}"
+  center "$((top+7))" "${CYAN}----------------------------------------${RESET}"
   center "$((top+8))" "${DIM}MODULE CONTROL${RESET}"
   draw_items
   draw_message
@@ -100,7 +98,7 @@ draw_items() {
   n=1; oldifs="$IFS"; IFS='|'
   for name in $names; do
     row=$((MENU_ROW+n-1))
-    if [ "$n" -eq "$SELECTED" ]; then center "$row" "${GREEN}${BOLD}❯  $name${RESET}"
+    if [ "$n" -eq "$SELECTED" ]; then center "$row" "${GREEN}${BOLD}>  $name${RESET}"
     else center "$row" "${WHITE}   $name${RESET}"; fi
     n=$((n+1))
   done
@@ -161,7 +159,7 @@ while :; do
   SHOW_MSG=''
   refresh_ui
 done
-__VANTEX_RAW_KO__
+exit 0
 """
     marker = "PAYLOAD_OFFSET=000000000000"
     offset = len(script.encode("utf-8"))
