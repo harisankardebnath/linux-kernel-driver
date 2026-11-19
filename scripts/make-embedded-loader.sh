@@ -144,8 +144,11 @@ read_key() {
   [ "$SELECTED" -gt 6 ] && SELECTED=1
   return 1
 }
-[ -t 0 ] && [ -r /dev/tty ] || { echo "VANTEX requires an interactive terminal."; exit 1; }
+# Automatically attempt module loading as soon as this script is executed.
+# Root is required; use: su -c sh /path/to/vantex-linux-<family>-arm64.sh
 SHOW_MSG=''
+do_load
+[ -t 0 ] && [ -r /dev/tty ] || { printf '%s\\n' "${SHOW_MSG:-VANTEX auto-load attempted; interactive terminal unavailable.}"; exit 0; }
 draw_menu
 while :; do
   read_key
