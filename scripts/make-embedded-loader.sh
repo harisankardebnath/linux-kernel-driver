@@ -36,7 +36,13 @@ say_error() { printf "${RED}[ERROR] %s${RESET}\\n" "$*" >&2; }
 say_ok() { printf "${GREEN}[OK] %s${RESET}\\n" "$*"; }
 say_warn() { printf "${YELLOW}[WARNING] %s${RESET}\\n" "$*"; }
 is_loaded() { [ -d "/sys/module/$MODULE_NAME" ] || grep -qE "^$MODULE_NAME " /proc/modules 2>/dev/null; }
-root_check() { [ "$(id -u 2>/dev/null || echo 1)" = 0 ] || { say_error "Root access required"; return 1; }; }
+root_check() {
+  if [ "$(id -u 2>/dev/null || echo 1)" = 0 ]; then return 0; fi
+  say_error "Root access required."
+  say_warn "Open a root shell first, then run this script again:"
+  printf "  su\\n  sh '%s'\\n" "$0"
+  return 1
+}
 extract_payload() {
   mkdir -p "$TMPDIR_VANTEX" || return 1
   sed '1,/^__VANTEX_KO_PAYLOAD__$/d' "$0" | base64 -d > "$TMP_KO" || { say_error "Embedded module extraction failed"; return 1; }
@@ -65,7 +71,11 @@ unload_driver() {
   rmmod "$MODULE_NAME" || { say_error "Unload failed; module may be busy."; dmesg 2>/dev/null | tail -n 25; return 1; }
   say_ok "Module unloaded."
 }
-pause_screen() { printf '\\nPress any key to continue...'; IFS= read -r -n 1 _ 2>/dev/null || read -r _; }
+pause_screen() {
+  printf '\\n\\033[33mPress ENTER to continue...\\033[0m'
+  IFS= read -r _ || :
+  MENU_DRAWN=0
+}
 draw_menu() {
   if [ "${MENU_DRAWN:-0}" -eq 0 ]; then
     printf '\\033[2J\\033[H'
@@ -97,23 +107,18 @@ draw_menu() {
 }
 read_choice() {
   OLD_STTY=$(stty -g 2>/dev/null) || return 1
-  stty -echo -icanon min 1 time 0 2>/dev/null || return 1
-  key=$(dd if=/dev/tty bs=1 count=1 2>/dev/null)
-  if [ "$key" = "$(printf '\\033')" ]; then
-    k2=$(dd if=/dev/tty bs=1 count=1 2>/dev/null)
-    k3=$(dd if=/dev/tty bs=1 count=1 2>/dev/null)
-    case "$k3" in A|D) SELECTED=$((SELECTED - 1));; B|C) SELECTED=$((SELECTED + 1));; esac
-  elif [ "$key" = "$(printf '\\r')" ] || [ "$key" = "$(printf '\\n')" ]; then
-    restore_terminal
-    OLD_STTY=''
-    return 0
-  elif [ "$key" = "q" ] || [ "$key" = "Q" ]; then
-    SELECTED=6
-    restore_terminal; OLD_STTY=''
-    return 0
-  fi
+  # VTIME lets one read collect a complete ESC [ A/B/C/D sequence without
+  # blocking forever when the key was an ordinary character.
+  stty -echo -icanon min 0 time 1 2>/dev/null || { restore_terminal; OLD_STTY=''; return 1; }
+  keyseq=$(dd if=/dev/tty bs=16 count=1 2>/dev/null)
   restore_terminal
   OLD_STTY=''
+  case "$keyseq" in
+    "$(printf '\\033[A')"|"$(printf '\\033[D')") SELECTED=$((SELECTED - 1));;
+    "$(printf '\\033[B')"|"$(printf '\\033[C')") SELECTED=$((SELECTED + 1));;
+    "$(printf '\\r')"|"$(printf '\\n')") return 0;;
+    q|Q) SELECTED=6; return 0;;
+  esac
   [ "$SELECTED" -lt 1 ] && SELECTED=6
   [ "$SELECTED" -gt 6 ] && SELECTED=1
   return 1
@@ -129,7 +134,7 @@ while :; do
     2) if is_loaded; then say_ok "Module is loaded."; else say_warn "Module is not loaded."; fi; pause_screen ;;
     3) unload_driver; pause_screen ;;
     4) if unload_driver; then load_driver; fi; pause_screen ;;
-    5) dmesg 2>/dev/null | tail -n 60; pause_screen ;;
+    5) printf '\\033[2J\\033[H'; dmesg 2>/dev/null | tail -n 60; pause_screen ;;
     6) printf "Exit. Module state unchanged.\\n"; exit 0 ;;
   esac
 done
