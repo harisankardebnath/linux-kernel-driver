@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       versions:
-        description: "Build ARM64 Android Common Kernel 5.10 baseline"
+        description: "Build ARM64 Android 12 Common Kernel 5.10 baseline"
         required: true
         default: "5.10"
         type: string
@@ -19,7 +19,7 @@ jobs:
       matrix:
         include:
           - version: "5.10"
-            branch: "common-android13-5.10"
+            branch: "common-android12-5.10"
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
@@ -34,7 +34,7 @@ jobs:
           import os
           values = [v.strip() for v in os.environ["REQUESTED"].split(",")]
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write("run=" + str(os.environ["VERSION"] in values).lower() + "\n")
+              f.write("run=" + str(os.environ["VERSION"] in values).lower() + "\\n")
           PY
       - name: Install build dependencies
         if: steps.select.outputs.run == 'true'
@@ -45,7 +45,7 @@ jobs:
           curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
           chmod a+x "$HOME/bin/repo"
           echo "$HOME/bin" >> "$GITHUB_PATH"
-      - name: Fetch Android Common Kernel
+      - name: Fetch Android 12 Common Kernel 5.10
         if: steps.select.outputs.run == 'true'
         env:
           BRANCH: ${{ matrix.branch }}
@@ -56,7 +56,7 @@ jobs:
           repo sync -c --no-tags -j2
       - name: Integrate reverse_exe
         if: steps.select.outputs.run == 'true'
-        run: ./scripts/integrate-driver.sh "$GITHUB_WORKSPACE/sources/${{ matrix.version }}"
+        run: bash ./scripts/integrate-driver.sh "$GITHUB_WORKSPACE/sources/${{ matrix.version }}"
       - name: Build GKI distribution
         if: steps.select.outputs.run == 'true'
         run: |
@@ -73,13 +73,13 @@ jobs:
           FOUND=0
           while IFS= read -r -d '' module; do
             release="$(modinfo -F vermagic "$module" | awk '{print $1}')"
-            version="$(printf '%s\n' "$release" | grep -oE '^[0-9]+\.[0-9]+' || true)"
+            version="$(printf '%s\\n' "$release" | grep -oE '^[0-9]+\\.[0-9]+' || true)"
             if [ "$version" != "5.10" ]; then
               echo "Skipping non-5.10 module $module (vermagic: $release)" >&2
               continue
             fi
             cp -v "$module" "$DEST/reverse_exe-$version.ko"
-            printf '%s\n' "$release" > "$DEST/kernelrelease-$version.txt"
+            printf '%s\\n' "$release" > "$DEST/kernelrelease-$version.txt"
             sha256sum "$DEST/reverse_exe-$version.ko" > "$DEST/SHA256SUMS-$version"
             FOUND=1
           done < <(find "sources/${{ matrix.version }}" -type f -name 'reverse_exe.ko' -print0 2>/dev/null)
@@ -92,7 +92,7 @@ jobs:
         if: always() && steps.select.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: reverse_exe-android-gki-${{ matrix.version }}
+          name: reverse_exe-android12-gki-${{ matrix.version }}
           path: artifacts/${{ matrix.version }}/
           if-no-files-found: warn
           retention-days: 14
