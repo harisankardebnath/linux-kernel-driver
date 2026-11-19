@@ -1,6 +1,11 @@
 name: Build reverse_exe module matrix (ARM64)
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'driver/**'
+      - '.github/workflows/build-kernel-matrix.yml'
   workflow_dispatch:
     inputs:
       targets:
