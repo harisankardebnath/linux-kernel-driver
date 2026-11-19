@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       versions:
-        description: "Build only reverse_exe-5.10.ko for Android 12 ARM64 Common Kernel 5.10"
+        description: "Build reverse_exe-5.10.ko for Android 12 ARM64 Common Kernel 5.10"
         required: true
         default: "5.10"
         type: string
@@ -26,27 +26,30 @@ jobs:
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
+
       - name: Select requested version
         id: select
         env:
-          REQUESTED: ${{ inputs.versions }}
+          REQUESTED: ${{ inputs.versions || '5.10' }}
           VERSION: ${{ matrix.version }}
         run: |
           python3 - <<'PY'
           import os
           values = [v.strip() for v in os.environ["REQUESTED"].split(",")]
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write("run=" + str(os.environ["VERSION"] in values).lower() + "\n")
+              f.write("run=" + str(os.environ["VERSION"] in values).lower() + "\\n")
           PY
+
       - name: Install build dependencies
         if: steps.select.outputs.run == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex git kmod libelf-dev libssl-dev lz4 python3 rsync unzip zip openjdk-17-jdk
+          sudo apt-get install -y bc bison build-essential clang-14 lld-14 llvm-14 flex git kmod libelf-dev libssl-dev python3 rsync
           mkdir -p "$HOME/bin"
           curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
           chmod a+x "$HOME/bin/repo"
           echo "$HOME/bin" >> "$GITHUB_PATH"
+
       - name: Fetch Android 12 Common Kernel 5.10
         if: steps.select.outputs.run == 'true'
         env:
@@ -56,54 +59,55 @@ jobs:
           cd "sources/${{ matrix.version }}"
           repo init -u https://android.googlesource.com/kernel/manifest -b "$BRANCH"
           repo sync -c --no-tags -j2
+
       - name: Integrate reverse_exe
         if: steps.select.outputs.run == 'true'
         run: bash ./scripts/integrate-driver.sh "$GITHUB_WORKSPACE/sources/${{ matrix.version }}"
-      - name: Build Android 12 kernel (module build prerequisite)
+
+      - name: Configure Android 12 ARM64 kernel
         if: steps.select.outputs.run == 'true'
-        run: |
-          mkdir -p "$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}"
-          cd "sources/${{ matrix.version }}"
-          set -o pipefail
-          BUILD_CONFIG=common/build.config.gki.aarch64 DIST_DIR="$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}" build/build.sh 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/build-${{ matrix.version }}.log"
-      - name: Compile reverse_exe as external module
-        if: success() && steps.select.outputs.run == 'true'
         run: |
           set -euo pipefail
           cd "sources/${{ matrix.version }}"
-          KOUT="$GITHUB_WORKSPACE/sources/${{ matrix.version }}/out/android12-5.10/common"
-          test -f "$KOUT/.config" || { echo "Prepared Android 12 ARM64 kernel config not found: $KOUT/.config" >&2; exit 1; }
-          make -C common O="$KOUT" ARCH=arm64 LLVM=1 M=drivers/misc/reverse_exe CONFIG_REVERSE_EXE=m modules
-          test -f common/drivers/misc/reverse_exe/reverse_exe.ko
+          KOUT="$PWD/out/android12-5.10/common"
+          mkdir -p "$KOUT"
+          make -C common O="$KOUT" ARCH=arm64 LLVM=-14 gki_defconfig
+          scripts/config --file "$KOUT/.config" -m CONFIG_REVERSE_EXE
+          make -C common O="$KOUT" ARCH=arm64 LLVM=-14 olddefconfig
+          grep -E '^(CONFIG_ARM64=y|CONFIG_REVERSE_EXE=m|CONFIG_MODVERSIONS=)' "$KOUT/.config" || true
+
+      - name: Build kernel modules only (no vmlinux or GKI image)
+        if: steps.select.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          cd "sources/${{ matrix.version }}"
+          KOUT="$PWD/out/android12-5.10/common"
+          set -o pipefail
+          make -C common O="$KOUT" ARCH=arm64 LLVM=-14 -j2 modules 2>&1 | tee "$GITHUB_WORKSPACE/modules-build.log"
+          test -f "$KOUT/drivers/misc/reverse_exe/reverse_exe.ko"
+
       - name: Collect ONLY reverse_exe.ko
         if: success() && steps.select.outputs.run == 'true'
         run: |
           set -euo pipefail
-          DIST="$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}"
+          KOUT="$GITHUB_WORKSPACE/sources/${{ matrix.version }}/out/android12-5.10/common"
           STAGE="$GITHUB_WORKSPACE/module-artifact"
+          MODULE="$KOUT/drivers/misc/reverse_exe/reverse_exe.ko"
+          test -f "$MODULE"
           mkdir -p "$STAGE"
-          MODULE="$(find "$DIST" "sources/${{ matrix.version }}" -type f -name 'reverse_exe.ko' -print -quit 2>/dev/null || true)"
-          if [ -z "$MODULE" ]; then
-            echo "reverse_exe.ko was not produced by the Android 12 kernel build." >&2
-            echo "No GKI image will be published as a substitute." >&2
-            exit 1
-          fi
-          RELEASE="$(modinfo -F vermagic "$MODULE" | awk '{print $1}')"
-          VERSION="$(printf '%s\n' "$RELEASE" | grep -oE '^[0-9]+\.[0-9]+' || true)"
-          if [ "$VERSION" != "5.10" ]; then
-            echo "Wrong kernel family: $RELEASE" >&2
-            exit 1
-          fi
+          RELEASE="$(make -s -C "$GITHUB_WORKSPACE/sources/${{ matrix.version }}/common" O="$KOUT" ARCH=arm64 LLVM=-14 kernelrelease)"
+          case "$RELEASE" in 5.10.*) ;; *) echo "Unexpected kernel release: $RELEASE" >&2; exit 1;; esac
           cp "$MODULE" "$STAGE/reverse_exe-5.10.ko"
-          printf '%s\n' "$RELEASE" > "$STAGE/kernelrelease.txt"
-          git -C "sources/${{ matrix.version }}/common" rev-parse HEAD > "$STAGE/kernel-commit.txt" 2>/dev/null || true
+          printf '%s\\n' "$RELEASE" > "$STAGE/kernelrelease.txt"
+          git -C "$GITHUB_WORKSPACE/sources/${{ matrix.version }}/common" rev-parse HEAD > "$STAGE/kernel-commit.txt"
           sha256sum "$STAGE/reverse_exe-5.10.ko" > "$STAGE/SHA256SUMS"
           modinfo "$STAGE/reverse_exe-5.10.ko" > "$STAGE/modinfo.txt"
+
       - name: Upload module only (.ko)
         if: success() && steps.select.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: reverse_exe-android12-5.10-module
           path: module-artifact/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
