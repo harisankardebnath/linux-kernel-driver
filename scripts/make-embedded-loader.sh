@@ -21,7 +21,7 @@ for ko in sorted(src.glob('**/*.ko')):
     script = """#!/system/bin/sh
 # VANTEX standalone ARM64 module manager
 set -u
-EXPECTED_RELEASE='"""+release.replace("'","'\\''")+"""'
+EXPECTED_FAMILY='"""+family+"""'
 KERNEL_FAMILY='"""+family+"""'
 MODULE_NAME='reverse_exe'
 PAYLOAD_OFFSET=000000000000
@@ -45,7 +45,7 @@ extract_payload() {
 do_load() {
   [ "$(id -u 2>/dev/null)" = 0 ] || { SHOW_MSG="Root required — launch with su"; MSG_COLOR=$RED; return 1; }
   [ "$(uname -m)" = aarch64 ] || { SHOW_MSG="ARM64 device required"; MSG_COLOR=$RED; return 1; }
-  [ "$(uname -r)" = "$EXPECTED_RELEASE" ] || { SHOW_MSG="Kernel mismatch — wrong bundle"; MSG_COLOR=$RED; return 1; }
+  case "$(uname -r)" in "$EXPECTED_FAMILY".*) ;; *) SHOW_MSG="Kernel family mismatch — need $EXPECTED_FAMILY.x"; MSG_COLOR=$RED; return 1;; esac
   if is_loaded; then SHOW_MSG="Already loaded"; MSG_COLOR=$GREEN; return 0; fi
   extract_payload || { SHOW_MSG="Embedded module extraction failed"; MSG_COLOR=$RED; return 1; }
   if insmod "$TMP_KO" && is_loaded; then SHOW_MSG="VANTEX module loaded"; MSG_COLOR=$GREEN; return 0; fi
