@@ -8,7 +8,7 @@ on:
       - 'driver.h'
       - 'scripts/**'
       - 'vantex.sh'
-      - '.github/workflows/vantex-kernel-matrix.yml'
+      - '.github/workflows/vantex-diagnostic-family.yml'
   workflow_dispatch:
     inputs:
       targets:
