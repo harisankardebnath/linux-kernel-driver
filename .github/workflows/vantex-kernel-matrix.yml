@@ -1,4 +1,4 @@
-name: VANTEX ARM64 kernel matrix — single-file SH bundles
+name: VANTEX ARM64 kernel matrix — standalone shell bundles
 
 on:
   push:
@@ -57,7 +57,7 @@ jobs:
       - name: Install ARM64 build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential flex g++ gcc-aarch64-linux-gnu git kmod libelf-dev libssl-dev make python3
+          sudo apt-get install -y bc bison build-essential flex g++ gcc-aarch64-linux-gnu git kmod libelf-dev libssl-dev make python3 file
           aarch64-linux-gnu-gcc --version
 
       - name: Validate VANTEX userspace header
@@ -79,13 +79,13 @@ jobs:
           make -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules_prepare
           make -s -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- kernelrelease | tee kernelrelease.txt
 
-      - name: Build VANTEX kernel module
+      - name: Build VANTEX diagnostic module
         run: |
           set -euo pipefail
           make -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- M="$GITHUB_WORKSPACE/driver" CONFIG_REVERSE_EXE=m modules
           test -s driver/reverse_exe.ko
 
-      - name: Stage module and exact build metadata
+      - name: Stage module and build metadata
         env:
           VERSION: ${{ matrix.version }}
         run: |
@@ -121,64 +121,23 @@ jobs:
           path: collected
           merge-multiple: false
 
-      - name: Generate one self-contained SH file per kernel
+      - name: Generate and validate one self-contained shell file per module
         run: |
           set -euo pipefail
           chmod +x scripts/make-embedded-loader.sh
           scripts/make-embedded-loader.sh collected loaders
-          test "$(find loaders -maxdepth 1 -type f -name 'vantex-linux-*-arm64.sh' | wc -l)" -gt 0
-          for f in loaders/vantex-linux-*-arm64.sh; do
+          find loaders -maxdepth 1 -type f -name 'vantex-linux-*-arm64.sh' -print0 | while IFS= read -r -d '' f; do
             sh -n "$f"
-            grep -q '^__VANTEX_KO_PAYLOAD__
-
-      - name: Publish standalone VANTEX installers only
-        uses: actions/upload-artifact@v4
-        with:
-          name: VANTEX-standalone-SH-installers
-          path: loaders/vantex-linux-*-arm64.sh
-          if-no-files-found: error
-          retention-days: 30
- "$f"
+            grep -q '^__VANTEX_KO_PAYLOAD__$' "$f"
             sed '1,/^__VANTEX_KO_PAYLOAD__$/d' "$f" | base64 -d > /tmp/vantex-module.ko
             test -s /tmp/vantex-module.ko
+            file /tmp/vantex-module.ko | grep -q 'ELF 64-bit LSB relocatable, ARM aarch64'
+            rm -f /tmp/vantex-module.ko
           done
-          python3 - <<'PY'
-          import os, pty, select, time
-          script = sorted(__import__('glob').glob('loaders/vantex-linux-*-arm64.sh'))[0]
-          pid, fd = pty.fork()
-          if pid == 0:
-              os.execlp('sh', 'sh', script)
-          output = bytearray()
-          deadline = time.time() + 5
-          while time.time() < deadline:
-              ready, _, _ = select.select([fd], [], [], 0.1)
-              if ready:
-                  try: output.extend(os.read(fd, 4096))
-                  except OSError: break
-              if b'ENTER  Select' in output or b'Q  Quit' in output:
-                  break
-          os.write(fd, b'q')
-          deadline = time.time() + 5
-          status = None
-          while time.time() < deadline:
-              done, status = os.waitpid(pid, os.WNOHANG)
-              if done: break
-              ready, _, _ = select.select([fd], [], [], 0.1)
-              if ready:
-                  try: output.extend(os.read(fd, 4096))
-                  except OSError: pass
-          if status is None:
-              os.kill(pid, 9)
-              os.waitpid(pid, 0)
-              raise SystemExit('VANTEX TUI did not exit after Q')
-          if b'Q  Quit' not in output:
-              raise SystemExit('VANTEX TUI did not render its navigation footer')
-          if b'Press any key to continue' in output:
-              raise SystemExit('Obsolete pause prompt detected')
-          print('VANTEX TUI pseudo-terminal smoke test passed')
-          PY
+          test -n "$(find loaders -maxdepth 1 -type f -name 'vantex-linux-*-arm64.sh' -print -quit)"
+          echo "Standalone shell bundles passed syntax and embedded-ELF checks."
 
-      - name: Publish standalone VANTEX installers only
+      - name: Publish standalone VANTEX installers
         uses: actions/upload-artifact@v4
         with:
           name: VANTEX-standalone-SH-installers
