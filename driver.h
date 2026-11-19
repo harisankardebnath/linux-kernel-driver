@@ -1,8 +1,8 @@
-#ifndef REVERSE_EXE_USER_DRIVER_H
-#define REVERSE_EXE_USER_DRIVER_H
+#ifndef VANTEX_DRIVER_H
+#define VANTEX_DRIVER_H
 
 /*
- * Userspace helper for reverse_exe's bounded diagnostic buffer.
+ * VANTEX userspace client for the kernel module's bounded private test buffer.
  * This API only accesses the module's private 4 KiB buffer. It deliberately
  * has no PID/address-based process, game, physical, or kernel memory API.
  */
@@ -14,19 +14,19 @@
 #include <sys/ioctl.h>
 #include "driver/driver_uapi.h"
 
-class reverse_exe_driver {
+class vantex_driver {
 public:
-    reverse_exe_driver() noexcept : fd_(-1) {}
-    ~reverse_exe_driver() { close_device(); }
+    vantex_driver() noexcept : fd_(-1) {}
+    ~vantex_driver() { close_device(); }
 
-    reverse_exe_driver(const reverse_exe_driver&) = delete;
-    reverse_exe_driver& operator=(const reverse_exe_driver&) = delete;
+    vantex_driver(const vantex_driver&) = delete;
+    vantex_driver& operator=(const vantex_driver&) = delete;
 
-    reverse_exe_driver(reverse_exe_driver&& other) noexcept : fd_(other.fd_) {
+    vantex_driver(vantex_driver&& other) noexcept : fd_(other.fd_) {
         other.fd_ = -1;
     }
 
-    reverse_exe_driver& operator=(reverse_exe_driver&& other) noexcept {
+    vantex_driver& operator=(vantex_driver&& other) noexcept {
         if (this != &other) {
             close_device();
             fd_ = other.fd_;
@@ -157,4 +157,4 @@ private:
     }
 };
 
-#endif /* REVERSE_EXE_USER_DRIVER_H */
+#endif /* VANTEX_DRIVER_H */
