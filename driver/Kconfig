@@ -1,0 +1,6 @@
+config LINUX_KERNEL_DRIVER
+    tristate "Linux Kernel Driver diagnostic module"
+    depends on ARM64
+    help
+      Builds a diagnostic character device exposing a bounded private test
+      buffer. It does not access other processes or physical memory.
