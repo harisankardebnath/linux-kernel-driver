@@ -56,7 +56,7 @@ jobs:
           KOUT="$PWD/out/android12-5.10/common"
           mkdir -p "$KOUT"
           make -C common O="$KOUT" ARCH=arm64 LLVM=-14 gki_defconfig
-          scripts/config --file "$KOUT/.config" -m CONFIG_REVERSE_EXE
+          common/scripts/config --file "$KOUT/.config" -m CONFIG_REVERSE_EXE
           make -C common O="$KOUT" ARCH=arm64 LLVM=-14 olddefconfig
           grep -E '^(CONFIG_ARM64=y|CONFIG_REVERSE_EXE=m|CONFIG_MODVERSIONS=)' "$KOUT/.config" || true
 
