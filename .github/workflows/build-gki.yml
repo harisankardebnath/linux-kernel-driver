@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       versions:
-        description: "Comma-separated ACK branches: 5.10,5.15,6.1"
+        description: "Build ARM64 Android Common Kernel 5.10 baseline"
         required: true
-        default: "5.10,5.15,6.1"
+        default: "5.10"
         type: string
 
 permissions:
@@ -20,10 +20,6 @@ jobs:
         include:
           - version: "5.10"
             branch: "common-android13-5.10"
-          - version: "5.15"
-            branch: "common-android14-5.15"
-          - version: "6.1"
-            branch: "common-android14-6.1"
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
@@ -78,8 +74,8 @@ jobs:
           while IFS= read -r -d '' module; do
             release="$(modinfo -F vermagic "$module" | awk '{print $1}')"
             version="$(printf '%s\n' "$release" | grep -oE '^[0-9]+\.[0-9]+' || true)"
-            if [ -z "$version" ]; then
-              echo "Could not parse kernel version from $module (vermagic: $release)" >&2
+            if [ "$version" != "5.10" ]; then
+              echo "Skipping non-5.10 module $module (vermagic: $release)" >&2
               continue
             fi
             cp -v "$module" "$DEST/reverse_exe-$version.ko"
