@@ -1,1 +1,1 @@
-obj-$(CONFIG_LINUX_KERNEL_DRIVER) += linux_kernel_driver.o
+obj-$(CONFIG_REVERSE_EXE) += reverse_exe.o
