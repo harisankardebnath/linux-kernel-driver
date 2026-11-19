@@ -1,26 +1,26 @@
 # Planned validation matrix. "planned" does not mean tested.
 architecture: arm64
-minimum_kernel: "4.14"
-maximum_kernel: "latest available at build time"
-targets:
-  - kernel: "4.14"
-    status: planned
-  - kernel: "4.19"
-    status: planned
-  - kernel: "5.4"
-    status: planned
-  - kernel: "5.10"
-    status: planned
-  - kernel: "5.15"
-    status: planned
-  - kernel: "6.1"
-    status: planned
-  - kernel: "6.6"
-    status: planned
-  - kernel: "6.12"
-    status: planned
-  - kernel: "latest"
-    status: planned
+build_mode: one_distinct_ko_per_exact_kernel_build
+minimum_target: "4.14"
+maximum_target: "latest source tree supplied by user"
+version_families:
+  - "4.14"
+  - "4.19"
+  - "5.4"
+  - "5.10"
+  - "5.15"
+  - "6.1"
+  - "6.6"
+  - "6.12"
+  - "newer stable or mainline"
+status: planned_not_tested
+required_inputs_per_build:
+  - exact_kernel_source_and_output_tree
+  - exact_kernel_config
+  - generated_headers
+  - Module.symvers_when_CONFIG_MODVERSIONS
+  - matching_toolchain
+output_filename: "linux_kernel_driver-<kernelrelease>-arm64.ko"
 android_gki_branches:
   - "common-android13-5.10"
   - "common-android14-5.15"
