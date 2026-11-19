@@ -1,0 +1,104 @@
+name: Build Android GKI + Diagnostic Driver
+
+on:
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: "Comma-separated versions: 5.10,5.15,6.1"
+        required: true
+        default: "5.10,5.15,6.1"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: "5.10"
+            branch: "common-android13-5.10"
+          - version: "5.15"
+            branch: "common-android14-5.15"
+          - version: "6.1"
+            branch: "common-android14-6.1"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Select requested versions
+        id: select
+        env:
+          REQUESTED: ${{ inputs.versions }}
+          VERSION: ${{ matrix.version }}
+        run: |
+          python3 - <<'PY'
+          import os
+          requested = [x.strip() for x in os.environ["REQUESTED"].split(",") if x.strip()]
+          selected = os.environ["VERSION"] in requested
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"run={str(selected).lower()}\n")
+          PY
+
+      - name: Install repo and host dependencies
+        if: steps.select.outputs.run == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex git \
+            libelf-dev libssl-dev lz4 python3 python3-pip rsync unzip zip \
+            openjdk-17-jdk
+          mkdir -p "$HOME/bin"
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo \
+            -o "$HOME/bin/repo"
+          chmod a+x "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch complete Android Common Kernel source
+        if: steps.select.outputs.run == 'true'
+        env:
+          BRANCH: ${{ matrix.branch }}
+        run: |
+          mkdir -p "sources/${{ matrix.version }}"
+          cd "sources/${{ matrix.version }}"
+          repo init -u https://android.googlesource.com/kernel/manifest -b "$BRANCH"
+          repo sync -c --no-tags -j2
+
+      - name: Integrate diagnostic driver into GKI tree
+        if: steps.select.outputs.run == 'true'
+        run: |
+          ./scripts/integrate-driver.sh "$GITHUB_WORKSPACE/sources/${{ matrix.version }}"
+
+      - name: Build AArch64 GKI distribution with Kleaf
+        if: steps.select.outputs.run == 'true'
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}"
+          cd "sources/${{ matrix.version }}"
+          set -o pipefail
+          tools/bazel run //common:kernel_aarch64_dist -- \
+            --destdir="$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}" \
+            2>&1 | tee "$GITHUB_WORKSPACE/artifacts/build-${{ matrix.version }}.log"
+
+      - name: Record source revision and module artifacts
+        if: always() && steps.select.outputs.run == 'true'
+        run: |
+          mkdir -p "artifacts/${{ matrix.version }}"
+          if [ -d "sources/${{ matrix.version }}/common" ]; then
+            git -C "sources/${{ matrix.version }}/common" rev-parse HEAD \
+              > "artifacts/${{ matrix.version }}/kernel-commit.txt" || true
+          fi
+          find "artifacts/${{ matrix.version }}" -type f -name '*.ko' -print \
+            > "artifacts/${{ matrix.version }}/modules-list.txt" || true
+
+      - name: Upload GKI and module artifacts
+        if: always() && steps.select.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-gki-${{ matrix.version }}
+          path: artifacts/${{ matrix.version }}/
+          if-no-files-found: warn
+          retention-days: 14
