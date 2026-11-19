@@ -1,6 +1,8 @@
 name: Build Android 12 ARM64 module + reverse_exe
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       versions:
@@ -64,6 +66,15 @@ jobs:
           cd "sources/${{ matrix.version }}"
           set -o pipefail
           BUILD_CONFIG=common/build.config.gki.aarch64 DIST_DIR="$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}" build/build.sh 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/build-${{ matrix.version }}.log"
+      - name: Compile reverse_exe as external module
+        if: success() && steps.select.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          cd "sources/${{ matrix.version }}"
+          KOUT="$GITHUB_WORKSPACE/sources/${{ matrix.version }}/out/android12-5.10/common"
+          test -f "$KOUT/.config" || { echo "Prepared Android 12 ARM64 kernel config not found: $KOUT/.config" >&2; exit 1; }
+          make -C common O="$KOUT" ARCH=arm64 LLVM=1 M=drivers/misc/reverse_exe CONFIG_REVERSE_EXE=m modules
+          test -f common/drivers/misc/reverse_exe/reverse_exe.ko
       - name: Collect ONLY reverse_exe.ko
         if: success() && steps.select.outputs.run == 'true'
         run: |
