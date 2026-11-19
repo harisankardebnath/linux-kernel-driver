@@ -1,10 +1,10 @@
-name: Build Android GKI + Diagnostic Driver
+name: Build Android GKI + reverse_exe
 
 on:
   workflow_dispatch:
     inputs:
       versions:
-        description: "Comma-separated versions: 5.10,5.15,6.1"
+        description: "Comma-separated ACK branches: 5.10,5.15,6.1"
         required: true
         default: "5.10,5.15,6.1"
         type: string
@@ -27,10 +27,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
-      - name: Checkout project
-        uses: actions/checkout@v4
-
-      - name: Select requested versions
+      - uses: actions/checkout@v4
+      - name: Select requested version
         id: select
         env:
           REQUESTED: ${{ inputs.versions }}
@@ -38,27 +36,20 @@ jobs:
         run: |
           python3 - <<'PY'
           import os
-          requested = [x.strip() for x in os.environ["REQUESTED"].split(",") if x.strip()]
-          selected = os.environ["VERSION"] in requested
+          values = [v.strip() for v in os.environ["REQUESTED"].split(",")]
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"run={str(selected).lower()}\n")
+              f.write("run=" + str(os.environ["VERSION"] in values).lower() + "\n")
           PY
-
-      - name: Install repo and host dependencies
+      - name: Install build dependencies
         if: steps.select.outputs.run == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            bc bison build-essential ccache curl flex git \
-            libelf-dev libssl-dev lz4 python3 python3-pip rsync unzip zip \
-            openjdk-17-jdk
+          sudo apt-get install -y bc bison build-essential ccache curl flex git libelf-dev libssl-dev lz4 python3 rsync unzip zip openjdk-17-jdk
           mkdir -p "$HOME/bin"
-          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo \
-            -o "$HOME/bin/repo"
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
           chmod a+x "$HOME/bin/repo"
           echo "$HOME/bin" >> "$GITHUB_PATH"
-
-      - name: Fetch complete Android Common Kernel source
+      - name: Fetch Android Common Kernel
         if: steps.select.outputs.run == 'true'
         env:
           BRANCH: ${{ matrix.branch }}
@@ -67,38 +58,28 @@ jobs:
           cd "sources/${{ matrix.version }}"
           repo init -u https://android.googlesource.com/kernel/manifest -b "$BRANCH"
           repo sync -c --no-tags -j2
-
-      - name: Integrate diagnostic driver into GKI tree
+      - name: Integrate reverse_exe
         if: steps.select.outputs.run == 'true'
-        run: |
-          ./scripts/integrate-driver.sh "$GITHUB_WORKSPACE/sources/${{ matrix.version }}"
-
-      - name: Build AArch64 GKI distribution with Kleaf
+        run: ./scripts/integrate-driver.sh "$GITHUB_WORKSPACE/sources/${{ matrix.version }}"
+      - name: Build GKI distribution
         if: steps.select.outputs.run == 'true'
         run: |
           mkdir -p "$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}"
           cd "sources/${{ matrix.version }}"
           set -o pipefail
-          tools/bazel run //common:kernel_aarch64_dist -- \
-            --destdir="$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}" \
-            2>&1 | tee "$GITHUB_WORKSPACE/artifacts/build-${{ matrix.version }}.log"
-
-      - name: Record source revision and module artifacts
+          tools/bazel run //common:kernel_aarch64_dist -- --destdir="$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}" 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/build-${{ matrix.version }}.log"
+      - name: Collect reverse_exe module and metadata
         if: always() && steps.select.outputs.run == 'true'
         run: |
           mkdir -p "artifacts/${{ matrix.version }}"
-          if [ -d "sources/${{ matrix.version }}/common" ]; then
-            git -C "sources/${{ matrix.version }}/common" rev-parse HEAD \
-              > "artifacts/${{ matrix.version }}/kernel-commit.txt" || true
-          fi
-          find "artifacts/${{ matrix.version }}" -type f -name '*.ko' -print \
-            > "artifacts/${{ matrix.version }}/modules-list.txt" || true
-
-      - name: Upload GKI and module artifacts
+          find sources/${{ matrix.version }} artifacts/${{ matrix.version }} -type f -name 'reverse_exe.ko' -exec cp -v {} "artifacts/${{ matrix.version }}/reverse_exe-${{ matrix.version }}-arm64.ko" \; 2>/dev/null || true
+          find "artifacts/${{ matrix.version }}" -type f -name '*.ko' -print > "artifacts/${{ matrix.version }}/modules-list.txt" || true
+          git -C "sources/${{ matrix.version }}/common" rev-parse HEAD > "artifacts/${{ matrix.version }}/kernel-commit.txt" 2>/dev/null || true
+      - name: Upload artifacts
         if: always() && steps.select.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: android-gki-${{ matrix.version }}
+          name: reverse_exe-android-gki-${{ matrix.version }}
           path: artifacts/${{ matrix.version }}/
           if-no-files-found: warn
           retention-days: 14
