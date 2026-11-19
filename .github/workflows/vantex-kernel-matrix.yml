@@ -1,10 +1,11 @@
-name: VANTEX ARM64 kernel matrix — standalone SH bundles
+name: VANTEX ARM64 kernel matrix — single-file SH bundles
 
 on:
   push:
     branches: [main]
     paths:
       - 'driver/**'
+      - 'driver.h'
       - 'scripts/**'
       - 'vantex.sh'
       - '.github/workflows/vantex-kernel-matrix.yml'
@@ -56,8 +57,14 @@ jobs:
       - name: Install ARM64 build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential flex gcc-aarch64-linux-gnu git kmod libelf-dev libssl-dev make python3
+          sudo apt-get install -y bc bison build-essential flex g++ gcc-aarch64-linux-gnu git kmod libelf-dev libssl-dev make python3
           aarch64-linux-gnu-gcc --version
+
+      - name: Validate VANTEX userspace header
+        run: |
+          set -euo pipefail
+          printf '#include "driver.h"\nint main() { vantex_driver client; return client.is_open() ? 0 : 0; }\n' > /tmp/vantex-header-check.cpp
+          g++ -std=c++17 -Wall -Wextra -Werror -I"$GITHUB_WORKSPACE" -fsyntax-only /tmp/vantex-header-check.cpp
 
       - name: Fetch Linux stable source
         env:
@@ -72,13 +79,13 @@ jobs:
           make -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules_prepare
           make -s -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- kernelrelease | tee kernelrelease.txt
 
-      - name: Build VANTEX module
+      - name: Build VANTEX kernel module
         run: |
           set -euo pipefail
           make -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- M="$GITHUB_WORKSPACE/driver" CONFIG_REVERSE_EXE=m modules
           test -s driver/reverse_exe.ko
 
-      - name: Stage build result
+      - name: Stage module and exact build metadata
         env:
           VERSION: ${{ matrix.version }}
         run: |
@@ -87,6 +94,7 @@ jobs:
           mkdir -p "$DEST"
           cp driver/reverse_exe.ko "$DEST/vantex-$VERSION-arm64.ko"
           cp kernelrelease.txt "$DEST/"
+          printf '%s\n' "$VERSION" > "$DEST/kernel-family.txt"
           cp out/.config "$DEST/kernel.config"
           git -C kernel rev-parse HEAD > "$DEST/kernel-commit.txt"
           modinfo "$DEST/vantex-$VERSION-arm64.ko" > "$DEST/modinfo.txt"
@@ -105,36 +113,29 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+
+      - name: Download successful kernel build inputs
+        uses: actions/download-artifact@v4
         with:
           pattern: vantex-linux-*-arm64
           path: collected
           merge-multiple: false
 
-      - name: Build aggregate archive and per-kernel loaders
+      - name: Generate one self-contained SH file per kernel
         run: |
           set -euo pipefail
-          test -d collected
-          find collected -type f -name '*.ko' -print | sort > MODULES.txt
-          test -s MODULES.txt
-          mkdir -p release loaders
-          cp MODULES.txt release/
-          cp -R collected/* release/
-          (cd release && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
-          tar -czf vantex-arm64-kernel-matrix.tar.gz -C release .
           chmod +x scripts/make-embedded-loader.sh
           scripts/make-embedded-loader.sh collected loaders
+          test "$(find loaders -maxdepth 1 -type f -name 'vantex-linux-*-arm64.sh' | wc -l)" -gt 0
+          for f in loaders/vantex-linux-*-arm64.sh; do
+            sh -n "$f"
+            grep -q '^__VANTEX_KO_PAYLOAD__$' "$f"
+          done
 
-      - uses: actions/upload-artifact@v4
+      - name: Publish standalone VANTEX installers only
+        uses: actions/upload-artifact@v4
         with:
           name: VANTEX-standalone-SH-installers
-          path: loaders/vantex-*.sh
-          if-no-files-found: error
-          retention-days: 30
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: vantex-arm64-raw-builds-reference
-          path: vantex-arm64-kernel-matrix.tar.gz
+          path: loaders/vantex-linux-*-arm64.sh
           if-no-files-found: error
           retention-days: 30
