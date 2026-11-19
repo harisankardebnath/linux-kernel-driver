@@ -26,120 +26,142 @@ KERNEL_FAMILY='"""+family+"""'
 MODULE_NAME='reverse_exe'
 TMPDIR_VANTEX="${TMPDIR:-/data/local/tmp}"
 TMP_KO="$TMPDIR_VANTEX/vantex-$KERNEL_FAMILY-$$.ko"
-RED='\\033[31m'; GREEN='\\033[32m'; YELLOW='\\033[33m'
-CYAN='\\033[36m'; RESET='\\033[0m'; BOLD='\\033[1m'
-cleanup() { rm -f "$TMP_KO"; }
-restore_terminal() { [ -n "${OLD_STTY:-}" ] && stty "$OLD_STTY" 2>/dev/null; }
+ESC=$(printf '\\033')
+RED="${ESC}[31m"; GREEN="${ESC}[32m"; YELLOW="${ESC}[33m"
+CYAN="${ESC}[36m"; WHITE="${ESC}[97m"; DIM="${ESC}[90m"
+RESET="${ESC}[0m"; BOLD="${ESC}[1m"
+SELECTED=1
+OLD_STTY=''
+cleanup() { [ -n "$OLD_STTY" ] && stty "$OLD_STTY" 2>/dev/null; rm -f "$TMP_KO"; printf '%b' "${RESET}${ESC}[?25h"; }
 trap cleanup EXIT
-trap 'restore_terminal; exit 130' INT TERM HUP
-say_error() { printf "${RED}[ERROR] %s${RESET}\\n" "$*" >&2; }
-say_ok() { printf "${GREEN}[OK] %s${RESET}\\n" "$*"; }
-say_warn() { printf "${YELLOW}[WARNING] %s${RESET}\\n" "$*"; }
+trap 'exit 130' INT TERM HUP
 is_loaded() { [ -d "/sys/module/$MODULE_NAME" ] || grep -qE "^$MODULE_NAME " /proc/modules 2>/dev/null; }
-root_check() {
-  if [ "$(id -u 2>/dev/null || echo 1)" = 0 ]; then return 0; fi
-  say_error "Root access required."
-  say_warn "Open a root shell first, then run this script again:"
-  printf "  su\\n  sh '%s'\\n" "$0"
-  return 1
-}
 extract_payload() {
   mkdir -p "$TMPDIR_VANTEX" || return 1
-  sed '1,/^__VANTEX_KO_PAYLOAD__$/d' "$0" | base64 -d > "$TMP_KO" || { say_error "Embedded module extraction failed"; return 1; }
-  [ -s "$TMP_KO" ] || { say_error "Embedded module is empty"; return 1; }
+  sed '1,/^__VANTEX_KO_PAYLOAD__$/d' "$0" | base64 -d > "$TMP_KO" || return 1
+  [ -s "$TMP_KO" ]
 }
-load_driver() {
-  root_check || return 1
-  [ "$(uname -m)" = aarch64 ] || { say_error "ARM64 device required"; return 1; }
-  [ "$(uname -r)" = "$EXPECTED_RELEASE" ] || { say_error "Kernel mismatch: built for $EXPECTED_RELEASE, running $(uname -r)"; return 1; }
-  if is_loaded; then say_ok "Already loaded; skipping."; return 0; fi
-  extract_payload || return 1
-  if insmod "$TMP_KO"; then
-    sleep 1
-    is_loaded && { say_ok "VANTEX module loaded."; return 0; }
-    say_error "insmod succeeded but module is not registered."
-  else
-    say_error "Module load failed. Check kernel logs."
-    dmesg 2>/dev/null | tail -n 35
-  fi
+do_load() {
+  [ "$(id -u 2>/dev/null)" = 0 ] || { SHOW_MSG="Root required — launch with su"; MSG_COLOR=$RED; return 1; }
+  [ "$(uname -m)" = aarch64 ] || { SHOW_MSG="ARM64 device required"; MSG_COLOR=$RED; return 1; }
+  [ "$(uname -r)" = "$EXPECTED_RELEASE" ] || { SHOW_MSG="Kernel mismatch — wrong bundle"; MSG_COLOR=$RED; return 1; }
+  if is_loaded; then SHOW_MSG="Already loaded"; MSG_COLOR=$GREEN; return 0; fi
+  extract_payload || { SHOW_MSG="Embedded module extraction failed"; MSG_COLOR=$RED; return 1; }
+  if insmod "$TMP_KO" && is_loaded; then SHOW_MSG="VANTEX module loaded"; MSG_COLOR=$GREEN; return 0; fi
+  SHOW_MSG="Load failed — check kernel logs"; MSG_COLOR=$RED
   return 1
 }
-unload_driver() {
-  root_check || return 1
-  if ! is_loaded; then say_warn "Module is not loaded."; return 0; fi
-  say_warn "Unloading the VANTEX module."
-  rmmod "$MODULE_NAME" || { say_error "Unload failed; module may be busy."; dmesg 2>/dev/null | tail -n 25; return 1; }
-  say_ok "Module unloaded."
+do_unload() {
+  [ "$(id -u 2>/dev/null)" = 0 ] || { SHOW_MSG="Root required — launch with su"; MSG_COLOR=$RED; return 1; }
+  if ! is_loaded; then SHOW_MSG="Module is not loaded"; MSG_COLOR=$YELLOW; return 0; fi
+  if rmmod "$MODULE_NAME"; then SHOW_MSG="Module unloaded"; MSG_COLOR=$GREEN; return 0; fi
+  SHOW_MSG="Unload failed — module may be busy"; MSG_COLOR=$RED
+  return 1
 }
-pause_screen() {
-  printf '\\n\\033[33mPress ENTER to continue...\\033[0m'
-  IFS= read -r _ || :
-  MENU_DRAWN=0
+term_size() {
+  set -- $(stty size 2>/dev/null)
+  ROWS=${1:-24}; COLS=${2:-80}
+  case "$ROWS:$COLS" in *[!0-9:]*|:*) ROWS=24; COLS=80;; esac
+  [ "$ROWS" -lt 18 ] && ROWS=18
+  [ "$COLS" -lt 42 ] && COLS=42
+}
+center() {
+  row=$1; raw=$2
+  plain=$(printf '%s' "$raw" | sed "s/${ESC}\\[[0-9;]*m//g")
+  width=${#plain}
+  col=$(( (COLS - width) / 2 + 1 ))
+  [ "$col" -lt 1 ] && col=1
+  printf '%b' "${ESC}[${row};${col}H${raw}"
 }
 draw_menu() {
-  if [ "${MENU_DRAWN:-0}" -eq 0 ]; then
-    printf '\\033[2J\\033[H'
-    printf "${CYAN}${BOLD}╔══════════════════════════════════════╗\\n"
-    printf "║             V A N T E X              ║\\n"
-    printf "║          KERNEL MODULE PANEL         ║\\n"
-    printf "╚══════════════════════════════════════╝${RESET}\\n"
-    printf "${CYAN}  Kernel  ${RESET}%s\\n" "$(uname -r | cut -d- -f1)"
-    if is_loaded; then printf "  Status  ${GREEN}${BOLD}● LOADED${RESET}\\n"; else printf "  Status  ${RED}${BOLD}● NOT LOADED${RESET}\\n"; fi
-    printf "${CYAN}  ────────────────────────────────────${RESET}\\n"
-    printf "  MODULE CONTROL\\n"
-    MENU_DRAWN=1
-  else
-    printf '\\033[8;1H'
-  fi
-  items="Load embedded module|Check status|Unload module|Reload module|View kernel logs|Exit"
-  n=1
-  oldifs="$IFS"; IFS='|'
-  for item in $items; do
-    if [ "$n" -eq "$SELECTED" ]; then
-      printf "\\033[%d;1H\\033[2K  ${GREEN}${BOLD}❯  %s  %s${RESET}\\n" "$((7+n))" "$n" "$item"
-    else
-      printf "\\033[%d;1H\\033[2K     %s  %s\\n" "$((7+n))" "$n" "$item"
-    fi
-    n=$((n + 1))
+  term_size
+  printf '%b' "${ESC}[2J${ESC}[H${ESC}[?25l"
+  top=$(( (ROWS - 17) / 2 + 1 ))
+  [ "$top" -lt 1 ] && top=1
+  STATUS_ROW=$((top+6)); MENU_ROW=$((top+9)); FOOT_ROW=$((top+16))
+  center "$top" "${CYAN}${BOLD}╔══════════════════════════════════════╗${RESET}"
+  center "$((top+1))" "${CYAN}${BOLD}║             V A N T E X              ║${RESET}"
+  center "$((top+2))" "${CYAN}${BOLD}║          KERNEL MODULE PANEL         ║${RESET}"
+  center "$((top+3))" "${CYAN}${BOLD}╚══════════════════════════════════════╝${RESET}"
+  center "$((top+5))" "${CYAN}Kernel${RESET}  $(uname -r | cut -d- -f1)"
+  draw_status
+  center "$((top+7))" "${CYAN}────────────────────────────────────────${RESET}"
+  center "$((top+8))" "${DIM}MODULE CONTROL${RESET}"
+  draw_items
+  draw_message
+}
+draw_status() {
+  if is_loaded; then center "$STATUS_ROW" "${WHITE}Status  ${GREEN}${BOLD}● LOADED${RESET}"
+  else center "$STATUS_ROW" "${WHITE}Status  ${RED}${BOLD}● NOT LOADED${RESET}"; fi
+}
+draw_items() {
+  names="Load module|Check status|Unload module|Reload module|View kernel logs|Exit"
+  n=1; oldifs="$IFS"; IFS='|'
+  for name in $names; do
+    row=$((MENU_ROW+n-1))
+    if [ "$n" -eq "$SELECTED" ]; then center "$row" "${GREEN}${BOLD}❯  $name${RESET}"
+    else center "$row" "${WHITE}   $name${RESET}"; fi
+    n=$((n+1))
   done
   IFS="$oldifs"
-  printf "\\033[15;1H\\033[2K${YELLOW}  ↑ ↓ / ← →  Navigate     ENTER  Select     Q  Quit${RESET}\\n"
 }
-read_choice() {
+draw_message() {
+  printf '%b' "${ESC}[${FOOT_ROW};1H${ESC}[2K"
+  if [ -n "${SHOW_MSG:-}" ]; then center "$FOOT_ROW" "${MSG_COLOR:-$YELLOW}$SHOW_MSG${RESET}"; fi
+}
+refresh_ui() {
+  term_size
+  draw_items
+  draw_status
+  draw_message
+}
+# Read one byte at a time in raw mode so ANSI arrow keys are never echoed.
+read_key() {
   OLD_STTY=$(stty -g 2>/dev/null) || return 1
-  # VTIME lets one read collect a complete ESC [ A/B/C/D sequence without
-  # blocking forever when the key was an ordinary character.
-  stty -echo -icanon min 0 time 1 2>/dev/null || { restore_terminal; OLD_STTY=''; return 1; }
-  keyseq=$(dd if=/dev/tty bs=16 count=1 2>/dev/null)
-  restore_terminal
+  stty raw -echo min 1 time 1 2>/dev/null || { OLD_STTY=''; return 1; }
+  key=$(dd if=/dev/tty bs=1 count=1 2>/dev/null)
+  case "$key" in
+    "$(printf '\\033')")
+      k2=$(dd if=/dev/tty bs=1 count=1 2>/dev/null)
+      k3=$(dd if=/dev/tty bs=1 count=1 2>/dev/null)
+      key="ESC$k2$k3"
+      ;;
+  esac
+  stty "$OLD_STTY" 2>/dev/null
   OLD_STTY=''
-  case "$keyseq" in
-    "$(printf '\\033[A')"|"$(printf '\\033[D')") SELECTED=$((SELECTED - 1));;
-    "$(printf '\\033[B')"|"$(printf '\\033[C')") SELECTED=$((SELECTED + 1));;
-    "$(printf '\\r')"|"$(printf '\\n')") return 0;;
+  case "$key" in
+    "ESC[A"|"ESC[D") SELECTED=$((SELECTED-1));;
+    "ESC[B"|"ESC[C") SELECTED=$((SELECTED+1));;
     q|Q) SELECTED=6; return 0;;
+    "$(printf '\\r')"|"$(printf '\\n')") return 0;;
   esac
   [ "$SELECTED" -lt 1 ] && SELECTED=6
   [ "$SELECTED" -gt 6 ] && SELECTED=1
   return 1
 }
-SELECTED=1
+[ -t 0 ] && [ -r /dev/tty ] || { echo "VANTEX requires an interactive terminal."; exit 1; }
+SHOW_MSG=''
+draw_menu
 while :; do
-  draw_menu
-  read_choice
-  rc=$?
-  [ "$rc" -eq 0 ] || continue
+  read_key
+  key_rc=$?
+  if [ "$key_rc" -ne 0 ]; then refresh_ui; continue; fi
+  SHOW_MSG=''
   case "$SELECTED" in
-    1) load_driver; pause_screen ;;
-    2) if is_loaded; then say_ok "Module is loaded."; else say_warn "Module is not loaded."; fi; pause_screen ;;
-    3) unload_driver; pause_screen ;;
-    4) if unload_driver; then load_driver; fi; pause_screen ;;
-    5) printf '\\033[2J\\033[H'; dmesg 2>/dev/null | tail -n 60; pause_screen ;;
-    6) printf "Exit. Module state unchanged.\\n"; exit 0 ;;
+    1) do_load;;
+    2) if is_loaded; then SHOW_MSG="Module is loaded"; MSG_COLOR=$GREEN; else SHOW_MSG="Module is not loaded"; MSG_COLOR=$YELLOW; fi;;
+    3) do_unload;;
+    4) do_unload && do_load;;
+    5) SHOW_MSG="Kernel log view is not available in compact menu"; MSG_COLOR=$YELLOW;;
+    6) exit 0;;
   esac
+  refresh_ui
+  sleep 1.5
+  SHOW_MSG=''
+  refresh_ui
 done
 __VANTEX_KO_PAYLOAD__
-""" + payload + "\n"
+
     out = dst / f'vantex-linux-{family}-arm64.sh'
     out.write_text(script)
     out.chmod(0o755)
