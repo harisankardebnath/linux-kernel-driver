@@ -1,40 +1,57 @@
-# reverse_exe — Android/Linux kernel diagnostic driver
+# reverse_exe — ARM64 Linux 5.10 diagnostic driver
 
-**Target kernel range:** Linux 4.4.x through 6.1.x inclusive  
-**Module filename pattern:** `reverse_exe-<major>.<minor>.ko`  
-**Examples:** `reverse_exe-4.4.ko`, `reverse_exe-5.10.ko`, `reverse_exe-6.1.ko`  
+**Target:** ARM64 devices running Linux **5.10.x**  
+**Module filename:** `reverse_exe-5.10.ko`  
 **Device node:** `/dev/reverse_exe`
 
-## Scope
+## What “universal 5.10 support” means
+
+The source is intended to be portable across ARM64 vendor kernels based on Linux 5.10.x (Qualcomm, MediaTek, Samsung/Exynos and other ARM64 platforms). The output basename is always `reverse_exe-5.10.ko`.
+
+**There is no single binary that is guaranteed to load on every 5.10.x device.** Vendor kernels can differ in exported symbols, symbol CRCs, GKI KMI, configuration, compiler/toolchain, LTO/CFI settings, module signing and vendor backports. Therefore build the same source separately against each exact device kernel build tree. The resulting files retain the same basename but are stored in separate directories named after their exact kernel release and build identity. Do not overwrite or mix these builds.
+
+## Driver scope
 
 This is a diagnostic character driver exposing a private bounded 4 KiB buffer with read/write, clear and size ioctl operations. It does not read or write other processes' memory, game memory, physical memory, or arbitrary kernel memory. It contains no anti-cheat bypass, process hiding, or stealth features.
 
-## Kernel compatibility target
+## Requirements for each device build
 
-The intended source-compatibility range is Linux **4.4.x to 6.1.x inclusive**. Target families are 4.4, 4.9, 4.14, 4.19, 5.4, 5.10, 5.15 and 6.1. This is a compatibility target, not a claim that every patch release or vendor kernel has already been built and tested. Vendor backports and configuration differences can require fixes for individual trees.
+- ARM64 kernel source and prepared output/build tree for that exact device firmware
+- Kernel release in the 5.10.x family
+- Matching `.config`, generated headers and `Module.symvers` (when applicable)
+- Matching compiler/toolchain and build flags
+- Matching Android GKI KMI and module-signing requirements, where enabled
 
-Build a separate module for every exact prepared kernel build tree:
-
-```bash
-./scripts/build-module.sh /path/to/prepared/kernel/build
-```
-
-For multiple exact builds:
+## Build one device-specific module
 
 ```bash
-./scripts/build-many-kernels.sh /kernels/4.4/out /kernels/4.9/out /kernels/4.14/out /kernels/4.19/out /kernels/5.4/out /kernels/5.10/out /kernels/5.15/out /kernels/6.1/out
+./scripts/build-module.sh /path/to/device/kernel/out
 ```
 
-The artifact basename uses the kernel family, not the patch release. For example, a 5.10.218 build produces `reverse_exe-5.10.ko`; a 6.1.75 build produces `reverse_exe-6.1.ko`. Each build is kept in a directory named after the full exact kernel release, so same-family builds do not overwrite one another.
+The output is stored under:
 
-A kernel family label does not guarantee ABI compatibility. Each module must be built against the matching source, configuration, generated headers, Module.symvers when applicable, and matching toolchain. Android GKI KMI and module-signing requirements also apply. Do not assume a module built for one 5.10 kernel will load on every other 5.10.x kernel.
+```
+artifacts/per-kernel/<exact-kernel-release>-arm64/reverse_exe-5.10.ko
+```
 
-## CI workflow
+For multiple devices, pass each device's own prepared build tree:
 
-The GitHub Actions workflow currently provides manual Android Common Kernel builds for 5.10, 5.15 and 6.1. It does not automatically cover legacy 4.4 through 5.4 trees or every OEM kernel. Use `scripts/build-many-kernels.sh` with each exact prepared source/output tree for those targets.
+```bash
+./scripts/build-many-kernels.sh /kernels/device-A/out /kernels/device-B/out /kernels/device-C/out
+```
 
-## Motorola Moto G64 5G
+Each device build is isolated in its own exact-release directory. If two devices report the same kernel release but have different configurations or symbol tables, keep their build trees and artifacts separate; the release string alone is not a unique ABI identifier.
 
-For the Moto G64, use the matching Motorola kernel source and exact firmware configuration. A generic ACK/GKI module is not automatically compatible. Do not load or flash an artifact unless the kernel release, ABI/KMI, symbol versions and signing requirements match the running device.
+## Build for Motorola Moto G64 5G
 
-See `compat/BUILD-EACH-KERNEL.md` for build instructions.
+The Motorola kernel source branch matching the reported 5.10.218 family is:
+
+[MotorolaMobilityLLC/kernel-mtk — android-15-release-v1tds35h.83-20-5-2](https://github.com/MotorolaMobilityLLC/kernel-mtk/tree/android-15-release-v1tds35h.83-20-5-2)
+
+Its top-level Makefile identifies Linux 5.10.218. Confirm the exact source commit, firmware branch, defconfig/fragments, generated output tree and toolchain against the device before loading a module. A source branch match is not by itself proof of ABI/KMI compatibility.
+
+## Validation
+
+A successful compile is only the first check. Before loading, verify the module's `vermagic`, architecture, symbol dependencies/versions, GKI KMI compatibility and signing policy against the target device. Test on a recoverable device setup and retain a known-good boot image. Never assume a module built for one vendor's 5.10 kernel will load on another vendor's 5.10 kernel.
+
+The current CI workflow is a baseline build against Android Common Kernel 5.10. It is not a cross-vendor certification matrix. Device-specific builds must use each vendor's exact source/output tree.
