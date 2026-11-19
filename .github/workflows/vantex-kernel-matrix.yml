@@ -1,4 +1,4 @@
-name: VANTEX ARM64 kernel module matrix
+name: VANTEX ARM64 kernel matrix — standalone SH bundles
 
 on:
   push:
@@ -127,14 +127,14 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: vantex-embedded-sh-loaders
-          path: loaders/*.sh
+          name: VANTEX-standalone-SH-installers
+          path: loaders/vantex-*.sh
           if-no-files-found: error
           retention-days: 30
 
       - uses: actions/upload-artifact@v4
         with:
-          name: vantex-arm64-all-kernels
+          name: vantex-arm64-raw-builds-reference
           path: vantex-arm64-kernel-matrix.tar.gz
           if-no-files-found: error
           retention-days: 30
