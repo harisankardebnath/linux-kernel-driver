@@ -162,7 +162,7 @@ while :; do
   SHOW_MSG=''
   refresh_ui
 done
-exit 0
+exec /system/bin/true
 """
     marker = "PAYLOAD_OFFSET=000000000000"
     offset = len(script.encode("utf-8"))
