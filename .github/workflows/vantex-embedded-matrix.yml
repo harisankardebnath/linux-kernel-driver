@@ -45,7 +45,7 @@ jobs:
               for v in requested
           ]
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write("value=" + json.dumps({"include": matrix}, separators=(",", ":")) + "\\n")
+              f.write("value=" + json.dumps({"include": matrix}, separators=(",", ":")) + "\n")
           PY
 
   build:
@@ -94,7 +94,7 @@ jobs:
           mkdir -p "$DEST"
           cp driver/reverse_exe.ko "$DEST/vantex-$FAMILY-arm64.ko"
           cp kernelrelease.txt "$DEST/"
-          printf '%s\\n' "$FAMILY" > "$DEST/kernel-family.txt"
+          printf '%s\n' "$FAMILY" > "$DEST/kernel-family.txt"
           git -C kernel rev-parse HEAD > "$DEST/kernel-commit.txt"
           modinfo "$DEST/vantex-$FAMILY-arm64.ko" > "$DEST/modinfo.txt"
           sha256sum "$DEST/vantex-$FAMILY-arm64.ko" > "$DEST/SHA256SUMS"
@@ -133,7 +133,7 @@ jobs:
               raise SystemExit("No standalone loaders generated")
           for bundle in bundles:
               data = bundle.read_bytes()
-              marker = b"#\\xe7\\xa6\\xbb\\n"
+              marker = b"#\xe7\xa6\xbb\n"
               pos = data.find(marker)
               if pos < 0:
                   raise SystemExit(f"{bundle}: missing #离 payload marker")
@@ -145,7 +145,7 @@ jobs:
                   raise SystemExit(f"{bundle}: incorrect payload offset")
               prefix, payload = data[:offset], data[offset:]
               subprocess.run(["sh", "-n"], input=prefix.split(marker)[0], check=True)
-              if not payload.startswith(b"\\x7fELF"):
+              if not payload.startswith(b"\x7fELF"):
                   raise SystemExit(f"{bundle}: embedded payload is not ELF")
               extracted = subprocess.check_output(["tail", "-c", f"+{offset + 1}", str(bundle)])
               if extracted != payload:
