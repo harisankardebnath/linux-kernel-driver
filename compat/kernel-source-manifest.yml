@@ -1,0 +1,29 @@
+# Public source locations discovered for reverse_exe build validation.
+# Fetch script: scripts/fetch-kernel-sources.sh
+architecture: arm64
+upstream_stable:
+  repository: "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
+  branch_pattern: "linux-<major>.<minor>.y"
+  families:
+    - "4.4"
+    - "4.9"
+    - "4.14"
+    - "4.19"
+    - "5.4"
+    - "5.10"
+    - "5.15"
+    - "6.1"
+moto_g64_reference:
+  repository: "https://github.com/MotorolaMobilityLLC/kernel-mtk"
+  branch: "android-15-release-v1tds35h.83-20-5-2"
+  commit: "75f2e25abfabefe8262c5450484745bb1e762f8b"
+  kernel_release: "5.10.218"
+  relevant_config:
+    - "arch/arm64/configs/mgk_64_k510_defconfig"
+    - "arch/arm64/configs/ext_config/moto-mgk_64_k510-cancunf.config"
+    - "arch/arm64/configs/ext_config/moto-mgk_64_k510.config"
+  notes:
+    - "Reference source branch is for the V1TDS35H.83-20-5-2 firmware line."
+    - "User's previously reported firmware ends in -5-5; exact source/config match for that build is not yet confirmed."
+    - "Generic upstream stable sources do not substitute for vendor kernel trees."
+status: sources_located_not_yet_built
