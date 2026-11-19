@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   prepare:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     outputs:
       matrix: ${{ steps.matrix.outputs.value }}
     steps:
@@ -76,14 +76,18 @@ jobs:
           set -euo pipefail
           mkdir -p out
           make -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
+          make -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
           make -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules_prepare
           make -s -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- kernelrelease | tee kernelrelease.txt
+          test -s out/.config
+          grep -q '^CONFIG_ARM64=y' out/.config
 
       - name: Build VANTEX diagnostic module
         run: |
           set -euo pipefail
           make -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- M="$GITHUB_WORKSPACE/driver" CONFIG_REVERSE_EXE=m modules
           test -s driver/reverse_exe.ko
+          file driver/reverse_exe.ko | grep -q "ELF 64-bit LSB relocatable, ARM aarch64"
 
       - name: Stage module and build metadata
         env:
@@ -126,15 +130,34 @@ jobs:
           set -euo pipefail
           chmod +x scripts/make-embedded-loader.sh
           scripts/make-embedded-loader.sh collected loaders
-          find loaders -maxdepth 1 -type f -name 'vantex-linux-*-arm64.sh' -print0 | while IFS= read -r -d '' f; do
-            offset=$(grep -a -m1 '^PAYLOAD_OFFSET=' "$f" | cut -d= -f2)
-            test -n "$offset"
-            head -c "$offset" "$f" | sh -n
-            dd if="$f" of=/tmp/vantex-module.ko bs=1 skip="$offset" 2>/dev/null
-            test -s /tmp/vantex-module.ko
-            file /tmp/vantex-module.ko | grep -q 'ELF 64-bit LSB relocatable, ARM aarch64'
-            rm -f /tmp/vantex-module.ko
-          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess
+          bundles = sorted(Path("loaders").glob("vantex-linux-*-arm64.sh"))
+          if not bundles:
+              raise SystemExit("No standalone loader bundles were generated")
+          for bundle in bundles:
+              data = bundle.read_bytes()
+              match = re.search(rb"(?m)^PAYLOAD_OFFSET=([0-9]{12})$", data)
+              if not match:
+                  raise SystemExit(f"{bundle}: missing fixed-width payload offset")
+              offset = int(match.group(1))
+              if offset <= match.end() or offset >= len(data):
+                  raise SystemExit(f"{bundle}: invalid payload offset {offset}")
+              prefix, payload = data[:offset], data[offset:]
+              if not prefix.endswith(b"exit 0\\n"):
+                  raise SystemExit(f"{bundle}: shell prefix must end with exit 0")
+              subprocess.run(["sh", "-n"], input=prefix, check=True)
+              if not payload.startswith(b"\\x7fELF"):
+                  raise SystemExit(f"{bundle}: appended payload is not ELF")
+              temp = Path("/tmp/vantex-module-check.ko")
+              temp.write_bytes(payload)
+              info = subprocess.check_output(["file", str(temp)], text=True)
+              if "ELF 64-bit LSB relocatable, ARM aarch64" not in info:
+                  raise SystemExit(f"{bundle}: unexpected payload type: {info.strip()}")
+              temp.unlink()
+              print(f"PASS {bundle}: shell syntax + raw ARM64 ELF payload")
+          PY
           test -n "$(find loaders -maxdepth 1 -type f -name 'vantex-linux-*-arm64.sh' -print -quit)"
           echo "Standalone shell bundles passed syntax and embedded-ELF checks."
 
