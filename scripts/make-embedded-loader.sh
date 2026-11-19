@@ -67,7 +67,9 @@ term_size() {
 center() {
   row=$1; raw=$2
   plain=$(printf '%s' "$raw" | sed "s/${ESC}\\[[0-9;]*m//g")
-  width=${#plain}
+  # Count UTF-8 characters, not bytes: box-drawing glyphs are multibyte.
+  width=$(printf '%s' "$plain" | wc -m | tr -d ' ')
+  case "$width" in ''|*[!0-9]*) width=${#plain};; esac
   col=$(( (COLS - width) / 2 + 1 ))
   [ "$col" -lt 1 ] && col=1
   printf '%b' "${ESC}[${row};${col}H${raw}"
