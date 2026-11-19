@@ -1,28 +1,65 @@
-# Build reverse_exe across Linux 4.4.x–6.1.x
+# ARM64 Linux 5.10.x device builds
 
-The intended kernel source-compatibility range is Linux **4.4.x through 6.1.x inclusive**. Target families: 4.4, 4.9, 4.14, 4.19, 5.4, 5.10, 5.15 and 6.1.
+The project target is ARM64 Linux **5.10.x** across vendor devices. The module basename is always:
 
-Prepare a separate configured kernel source/output tree for every exact target build. Each tree must have its matching .config, generated headers, and Module.symvers when CONFIG_MODVERSIONS is enabled. Use the exact toolchain and vendor source/configuration for that target.
-
-Example builds:
-
-```bash
-./scripts/build-module.sh /kernels/4.4/out
-./scripts/build-module.sh /kernels/4.9/out
-./scripts/build-module.sh /kernels/4.14/out
-./scripts/build-module.sh /kernels/4.19/out
-./scripts/build-module.sh /kernels/5.4/out
-./scripts/build-module.sh /kernels/5.10/out
-./scripts/build-module.sh /kernels/5.15/out
-./scripts/build-module.sh /kernels/6.1/out
+```
+reverse_exe-5.10.ko
 ```
 
-The artifact name is the kernel family: a build from 5.10.218 produces `reverse_exe-5.10.ko`; a build from 6.1.75 produces `reverse_exe-6.1.ko`. Exact patch/vendor release metadata is stored alongside each artifact in its own full-release directory.
+## Important ABI rule
 
-Build multiple prepared trees in one run:
+“Universal” refers to the source and naming convention, not to one interchangeable binary. Two devices running 5.10.x can have different kernel ABIs/KMIs, exported symbols, symbol CRCs, configuration, compiler flags, LTO/CFI settings, vendor backports and module-signing requirements. Build a separate module against each exact device kernel build tree.
+
+## Required inputs per device
+
+- Exact vendor kernel source for the installed firmware
+- Prepared output/build directory for that source
+- Exact `.config` and generated headers
+- `Module.symvers` when symbol versioning is enabled
+- Matching LLVM/GCC toolchain and build flags
+- Android GKI KMI and module-signing data/policy, if applicable
+
+## Build
 
 ```bash
-./scripts/build-many-kernels.sh /kernels/4.4/out /kernels/4.9/out /kernels/4.14/out /kernels/4.19/out /kernels/5.4/out /kernels/5.10/out /kernels/5.15/out /kernels/6.1/out
+./scripts/build-module.sh /path/to/device/kernel/out
 ```
 
-**Testing status:** The range is the intended compatibility target, not proof that every patch release, OEM fork or configuration has passed build/load testing. Current GitHub Actions covers ACK 5.10, 5.15 and 6.1 only. Legacy 4.4 through 5.4 trees must be supplied as exact source/output trees and built separately. A successful compile does not prove load-time ABI, KMI, signing or device compatibility.
+For several devices:
+
+```bash
+./scripts/build-many-kernels.sh /kernels/device-A/out /kernels/device-B/out /kernels/device-C/out
+```
+
+Each output is kept separately:
+
+```
+artifacts/per-kernel/<exact-kernel-release>-arm64/reverse_exe-5.10.ko
+```
+
+Do not combine artifacts merely because their kernel release strings both start with 5.10. If two targets have the same release string, use separate output roots to prevent collisions:
+
+```bash
+./scripts/build-module.sh /kernels/device-A/out artifacts/device-A
+./scripts/build-module.sh /kernels/device-B/out artifacts/device-B
+```
+
+## Motorola Moto G64 5G reference
+
+Motorola publishes a matching 5.10.218 source branch here:
+
+[Motorola kernel-mtk — android-15-release-v1tds35h.83-20-5-2](https://github.com/MotorolaMobilityLLC/kernel-mtk/tree/android-15-release-v1tds35h.83-20-5-2)
+
+The branch Makefile reports Linux 5.10.218. Verify it against the exact firmware/build configuration on the phone before compiling and loading. Matching only the version string is insufficient.
+
+## Validation checklist
+
+1. Confirm target architecture is ARM64 and kernel release is 5.10.x.
+2. Build against the exact prepared source/output tree.
+3. Inspect `modinfo reverse_exe-5.10.ko` and verify vermagic.
+4. Check unresolved symbols, symbol CRCs and GKI KMI compatibility.
+5. Sign the module if the target kernel requires signed modules.
+6. Load only on the matching device build and inspect `dmesg`.
+7. Run `scripts/test-device.sh` to test the private buffer.
+
+**Status:** The source is configured for the 5.10.x ARM64 target. Cross-vendor compatibility is not certified until separate device builds and load tests have passed. A successful compile does not prove runtime compatibility.
