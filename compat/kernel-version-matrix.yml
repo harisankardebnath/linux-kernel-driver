@@ -20,7 +20,12 @@ required_inputs_per_build:
   - generated_headers
   - Module.symvers_when_CONFIG_MODVERSIONS
   - matching_toolchain
-output_filename: "linux_kernel_driver-<kernelrelease>-arm64.ko"
+filename_pattern: "reverse_exe-<major>.<minor>.<patch>.ko"
+example_5_10_artifacts:
+  - "reverse_exe-5.10.218.ko"
+  - "reverse_exe-5.10.219.ko"
+  - "reverse_exe-5.10.220.ko"
+artifact_directory: "artifacts/per-kernel/<full-kernelrelease>-arm64/"
 android_gki_branches:
   - "common-android13-5.10"
   - "common-android14-5.15"
