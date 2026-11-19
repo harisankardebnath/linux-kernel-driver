@@ -1,0 +1,95 @@
+name: Build reverse_exe module matrix (ARM64)
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: "Comma-separated kernel families to build"
+        required: true
+        default: "4.14,4.19,5.4,5.10,5.15,6.1"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - id: matrix
+        env:
+          TARGETS: ${{ inputs.targets }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          allowed = ["4.14", "4.19", "5.4", "5.10", "5.15", "6.1"]
+          requested = [x.strip() for x in os.environ["TARGETS"].split(",") if x.strip()]
+          invalid = sorted(set(requested) - set(allowed))
+          if invalid:
+              raise SystemExit("Unsupported target(s): " + ", ".join(invalid))
+          if not requested:
+              raise SystemExit("Select at least one kernel family")
+          matrix = [{"version": v, "branch": "linux-" + v + ".y"} for v in requested]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write("value=" + json.dumps({"include": matrix}, separators=(",", ":")) + "\n")
+          PY
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ARM64 build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential flex gcc-aarch64-linux-gnu git libelf-dev libssl-dev make python3
+          aarch64-linux-gnu-gcc --version
+
+      - name: Fetch Linux stable source for target family
+        env:
+          BRANCH: ${{ matrix.branch }}
+        run: |
+          git clone --depth=1 --single-branch --branch "$BRANCH" https://github.com/gregkh/linux.git kernel
+
+      - name: Prepare ARM64 kernel build tree
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          make -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
+          make -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules_prepare
+          make -s -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- kernelrelease | tee kernelrelease.txt
+
+      - name: Build external reverse_exe module only
+        run: |
+          set -euo pipefail
+          make -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- M="$GITHUB_WORKSPACE/driver" CONFIG_REVERSE_EXE=m modules
+          test -s driver/reverse_exe.ko
+
+      - name: Stage module and build metadata
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          DEST="$GITHUB_WORKSPACE/artifacts/linux-$VERSION"
+          mkdir -p "$DEST"
+          cp driver/reverse_exe.ko "$DEST/reverse_exe-$VERSION.ko"
+          cp kernelrelease.txt "$DEST/"
+          cp out/.config "$DEST/kernel.config"
+          git -C kernel rev-parse HEAD > "$DEST/kernel-commit.txt"
+          modinfo "$DEST/reverse_exe-$VERSION.ko" > "$DEST/modinfo.txt"
+          sha256sum "$DEST/reverse_exe-$VERSION.ko" > "$DEST/SHA256SUMS"
+
+      - name: Upload .ko only
+        uses: actions/upload-artifact@v4
+        with:
+          name: reverse_exe-linux-${{ matrix.version }}-arm64
+          path: artifacts/linux-${{ matrix.version }}/
+          if-no-files-found: error
+          retention-days: 14
