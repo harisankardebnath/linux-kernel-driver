@@ -10,20 +10,22 @@ src, dst = map(Path, sys.argv[1:])
 count = 0
 for ko in sorted(src.glob('**/*.ko')):
     kernel_file = ko.parent / 'kernelrelease.txt'
-    if not kernel_file.is_file():
-        raise SystemExit(f'Missing kernelrelease.txt beside {ko}')
+    family_file = ko.parent / 'kernel-family.txt'
+    if not kernel_file.is_file() or not family_file.is_file():
+        raise SystemExit(f'Missing kernelrelease.txt or kernel-family.txt beside {ko}')
     release = kernel_file.read_text().strip()
-    version = ko.stem.rsplit('-', 1)[-1]
+    family = family_file.read_text().strip()
+    if not family or any(c not in '0123456789.' for c in family):
+        raise SystemExit(f'Invalid kernel family metadata: {family!r}')
     payload = base64.b64encode(ko.read_bytes()).decode('ascii')
-    name = 'vantex'
     script = """#!/system/bin/sh
-# VANTEX Driver: standalone embedded module loader and manager
+# VANTEX standalone ARM64 installer and module manager
 set -u
 EXPECTED_RELEASE='"""+release.replace("'","'\\''")+"""'
+KERNEL_FAMILY='"""+family+"""'
 MODULE_NAME='reverse_exe'
-PAYLOAD_MARKER='__VANTEX_KO_PAYLOAD__'
 TMPDIR_VANTEX="${TMPDIR:-/data/local/tmp}"
-TMP_KO="$TMPDIR_VANTEX/vantex-$EXPECTED_RELEASE-$$.ko"
+TMP_KO="$TMPDIR_VANTEX/vantex-$KERNEL_FAMILY-$$.ko"
 cleanup() { rm -f "$TMP_KO"; }
 trap cleanup EXIT HUP INT TERM
 fail() { printf 'ERROR: %s\\n' "$*" >&2; return 1; }
@@ -45,7 +47,7 @@ load_driver() {
     is_loaded && { echo "VANTEX module loaded and verified."; return 0; }
     fail "insmod returned success but module is not registered."
   else
-    fail "Load failed; no automatic reboot. Check dmesg for ABI/signing errors."
+    fail "Load failed; automatic reboot is disabled to prevent boot loops."
     dmesg 2>/dev/null | tail -n 35
     printf '\\nType REBOOT to confirm recovery reboot, or press Enter to cancel: '
     read -r confirm
@@ -68,7 +70,7 @@ while :; do
   echo '        VANTEX DRIVER MANAGER'
   echo '===================================='
   echo "Kernel: $(uname -r)"
-  echo "Built : $EXPECTED_RELEASE"
+  echo "Built : $EXPECTED_RELEASE (family $KERNEL_FAMILY)"
   if is_loaded; then echo 'Status: LOADED'; else echo 'Status: NOT LOADED'; fi
   echo '------------------------------------'
   echo '1) Load embedded module'
@@ -91,11 +93,11 @@ while :; do
 done
 __VANTEX_KO_PAYLOAD__
 """ + payload + "\n"
-    out = dst / f'vantex-linux-{version}-arm64.sh'
+    out = dst / f'vantex-linux-{family}-arm64.sh'
     out.write_text(script)
     out.chmod(0o755)
     count += 1
 if not count:
     raise SystemExit('No .ko artifacts found')
-print(f'Generated {count} standalone VANTEX shell installer(s) with embedded modules in {dst}')
+print(f'Generated {count} standalone VANTEX shell bundle(s) with embedded modules in {dst}')
 PY
