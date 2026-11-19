@@ -1,10 +1,10 @@
-name: Build Android GKI + reverse_exe
+name: Build Android 12 ARM64 module + reverse_exe
 
 on:
   workflow_dispatch:
     inputs:
       versions:
-        description: "Build ARM64 Android 12 Common Kernel 5.10 baseline"
+        description: "Build only reverse_exe-5.10.ko for Android 12 ARM64 Common Kernel 5.10"
         required: true
         default: "5.10"
         type: string
@@ -57,42 +57,42 @@ jobs:
       - name: Integrate reverse_exe
         if: steps.select.outputs.run == 'true'
         run: bash ./scripts/integrate-driver.sh "$GITHUB_WORKSPACE/sources/${{ matrix.version }}"
-      - name: Build Android 12 GKI distribution
+      - name: Build Android 12 kernel (module build prerequisite)
         if: steps.select.outputs.run == 'true'
         run: |
           mkdir -p "$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}"
           cd "sources/${{ matrix.version }}"
           set -o pipefail
           BUILD_CONFIG=common/build.config.gki.aarch64 DIST_DIR="$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}" build/build.sh 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/build-${{ matrix.version }}.log"
-      - name: Collect reverse_exe module and metadata
-        if: always() && steps.select.outputs.run == 'true'
+      - name: Collect ONLY reverse_exe.ko
+        if: success() && steps.select.outputs.run == 'true'
         run: |
           set -euo pipefail
-          DEST="$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}"
-          mkdir -p "$DEST"
-          FOUND=0
-          while IFS= read -r -d '' module; do
-            release="$(modinfo -F vermagic "$module" | awk '{print $1}')"
-            version="$(printf '%s\\n' "$release" | grep -oE '^[0-9]+\\.[0-9]+' || true)"
-            if [ "$version" != "5.10" ]; then
-              echo "Skipping non-5.10 module $module (vermagic: $release)" >&2
-              continue
-            fi
-            cp -v "$module" "$DEST/reverse_exe-$version.ko"
-            printf '%s\\n' "$release" > "$DEST/kernelrelease-$version.txt"
-            sha256sum "$DEST/reverse_exe-$version.ko" > "$DEST/SHA256SUMS-$version"
-            FOUND=1
-          done < <(find "sources/${{ matrix.version }}" -type f -name 'reverse_exe.ko' -print0 2>/dev/null)
-          find "sources/${{ matrix.version }}" -type f -name '*.ko' -print > "$DEST/modules-list.txt" || true
-          git -C "sources/${{ matrix.version }}/common" rev-parse HEAD > "$DEST/kernel-commit.txt" 2>/dev/null || true
-          if [ "$FOUND" -eq 0 ]; then
-            echo "No reverse_exe.ko was produced. This workflow did not create a module artifact." >&2
+          DIST="$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}"
+          STAGE="$GITHUB_WORKSPACE/module-artifact"
+          mkdir -p "$STAGE"
+          MODULE="$(find "$DIST" "sources/${{ matrix.version }}" -type f -name 'reverse_exe.ko' -print -quit 2>/dev/null || true)"
+          if [ -z "$MODULE" ]; then
+            echo "reverse_exe.ko was not produced by the Android 12 kernel build." >&2
+            echo "No GKI image will be published as a substitute." >&2
+            exit 1
           fi
-      - name: Upload artifacts
-        if: always() && steps.select.outputs.run == 'true'
+          RELEASE="$(modinfo -F vermagic "$MODULE" | awk '{print $1}')"
+          VERSION="$(printf '%s\\n' "$RELEASE" | grep -oE '^[0-9]+\\.[0-9]+' || true)"
+          if [ "$VERSION" != "5.10" ]; then
+            echo "Wrong kernel family: $RELEASE" >&2
+            exit 1
+          fi
+          cp "$MODULE" "$STAGE/reverse_exe-5.10.ko"
+          printf '%s\\n' "$RELEASE" > "$STAGE/kernelrelease.txt"
+          git -C "sources/${{ matrix.version }}/common" rev-parse HEAD > "$STAGE/kernel-commit.txt" 2>/dev/null || true
+          sha256sum "$STAGE/reverse_exe-5.10.ko" > "$STAGE/SHA256SUMS"
+          modinfo "$STAGE/reverse_exe-5.10.ko" > "$STAGE/modinfo.txt"
+      - name: Upload module only (.ko)
+        if: success() && steps.select.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: reverse_exe-android12-gki-${{ matrix.version }}
-          path: artifacts/${{ matrix.version }}/
+          name: reverse_exe-android12-5.10-module
+          path: module-artifact/
           if-no-files-found: warn
           retention-days: 14
