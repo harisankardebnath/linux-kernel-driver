@@ -26,6 +26,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential clang-14 lld-14 llvm-14 flex git kmod libelf-dev libssl-dev python3 rsync
+          # Linux 5.10 Kconfig probes the unversioned linker name even when LLVM=-14 is used.
+          sudo ln -sf /usr/bin/ld.lld-14 /usr/local/bin/ld.lld
+          sudo ln -sf /usr/bin/clang-14 /usr/local/bin/clang
+          sudo ln -sf /usr/bin/llvm-ar-14 /usr/local/bin/llvm-ar
+          command -v ld.lld
+          ld.lld --version
           mkdir -p "$HOME/bin"
           curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
           chmod a+x "$HOME/bin/repo"
