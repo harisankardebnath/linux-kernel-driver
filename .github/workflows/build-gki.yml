@@ -34,7 +34,7 @@ jobs:
           import os
           values = [v.strip() for v in os.environ["REQUESTED"].split(",")]
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write("run=" + str(os.environ["VERSION"] in values).lower() + "\\n")
+              f.write("run=" + str(os.environ["VERSION"] in values).lower() + "\n")
           PY
       - name: Install build dependencies
         if: steps.select.outputs.run == 'true'
@@ -57,13 +57,13 @@ jobs:
       - name: Integrate reverse_exe
         if: steps.select.outputs.run == 'true'
         run: bash ./scripts/integrate-driver.sh "$GITHUB_WORKSPACE/sources/${{ matrix.version }}"
-      - name: Build GKI distribution
+      - name: Build Android 12 GKI distribution
         if: steps.select.outputs.run == 'true'
         run: |
           mkdir -p "$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}"
           cd "sources/${{ matrix.version }}"
           set -o pipefail
-          tools/bazel run //common:kernel_aarch64_dist -- --destdir="$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}" 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/build-${{ matrix.version }}.log"
+          BUILD_CONFIG=common/build.config.gki.aarch64 DIST_DIR="$GITHUB_WORKSPACE/artifacts/${{ matrix.version }}" build/build.sh 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/build-${{ matrix.version }}.log"
       - name: Collect reverse_exe module and metadata
         if: always() && steps.select.outputs.run == 'true'
         run: |
