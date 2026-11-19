@@ -39,8 +39,17 @@ trap 'exit 130' INT TERM HUP
 is_loaded() { [ -d "/sys/module/$MODULE_NAME" ] || grep -qE "^$MODULE_NAME " /proc/modules 2>/dev/null; }
 extract_payload() {
   mkdir -p "$TMPDIR_VANTEX" || return 1
-  dd if="$0" of="$TMP_KO" bs=1 skip="$PAYLOAD_OFFSET" 2>/dev/null || return 1
-  [ -s "$TMP_KO" ]
+  case "$0" in
+    /*) SELF_PATH="$0";;
+    *) SELF_PATH="$(pwd)/$0";;
+  esac
+  [ -r "$SELF_PATH" ] || return 1
+  # tail's byte offset avoids dd bs=1 scanning a large embedded payload.
+  PAYLOAD_START=$((PAYLOAD_OFFSET + 1))
+  tail -c "+$PAYLOAD_START" "$SELF_PATH" > "$TMP_KO" 2>/dev/null || return 1
+  [ -s "$TMP_KO" ] || return 1
+  MAGIC=$(od -An -N4 -tx1 "$TMP_KO" 2>/dev/null | tr -d ' \\n')
+  [ "$MAGIC" = "7f454c46" ] || { rm -f "$TMP_KO"; return 1; }
 }
 do_load() {
   [ "$(id -u 2>/dev/null)" = 0 ] || { SHOW_MSG="Root required — launch with su"; MSG_COLOR=$RED; return 1; }
