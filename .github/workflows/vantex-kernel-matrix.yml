@@ -145,8 +145,8 @@ jobs:
               if offset <= match.end() or offset >= len(data):
                   raise SystemExit(f"{bundle}: invalid payload offset {offset}")
               prefix, payload = data[:offset], data[offset:]
-              if not prefix.endswith(b"exit 0\\n"):
-                  raise SystemExit(f"{bundle}: shell prefix must end with exit 0")
+              if not prefix.endswith(b"exec /system/bin/true\\n"):
+                  raise SystemExit(f"{bundle}: shell prefix must end with exec terminator")
               subprocess.run(["sh", "-n"], input=prefix, check=True)
               if not payload.startswith(b"\\x7fELF"):
                   raise SystemExit(f"{bundle}: appended payload is not ELF")
