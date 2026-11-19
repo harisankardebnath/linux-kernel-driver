@@ -45,7 +45,8 @@ extract_payload() {
 do_load() {
   [ "$(id -u 2>/dev/null)" = 0 ] || { SHOW_MSG="Root required — launch with su"; MSG_COLOR=$RED; return 1; }
   [ "$(uname -m)" = aarch64 ] || { SHOW_MSG="ARM64 device required"; MSG_COLOR=$RED; return 1; }
-  case "$(uname -r)" in "$EXPECTED_FAMILY".*) ;; *) SHOW_MSG="Kernel family mismatch — need $EXPECTED_FAMILY.x"; MSG_COLOR=$RED; return 1;; esac
+  RUNNING_FAMILY=$(uname -r | awk -F. '{ if (NF >= 2) print $1 "." $2; else print $1 }')
+  [ "$RUNNING_FAMILY" = "$EXPECTED_FAMILY" ] || { SHOW_MSG="Kernel family mismatch — need $EXPECTED_FAMILY.x"; MSG_COLOR=$RED; return 1; }
   if is_loaded; then SHOW_MSG="Already loaded"; MSG_COLOR=$GREEN; return 0; fi
   extract_payload || { SHOW_MSG="Embedded module extraction failed"; MSG_COLOR=$RED; return 1; }
   if insmod "$TMP_KO" && is_loaded; then SHOW_MSG="VANTEX module loaded"; MSG_COLOR=$GREEN; return 0; fi
