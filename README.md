@@ -1,23 +1,35 @@
-# Linux Kernel Driver — Android GKI workspace
+# reverse_exe — Android/Linux kernel diagnostic driver
 
-This repository contains a diagnostic Linux character-device module and scripts/workflows for fetching and building Android Common Kernel (ACK/GKI) source branches for ARM64.
+**Module release:** 2.0.0  
+**Module filename:** `reverse_exe-<kernelrelease>-arm64.ko`  
+**Device node:** `/dev/reverse_exe`
 
-## Scope and safety
+## Scope
 
-The module exposes `/dev/linux_kernel_driver` and provides bounded read/write access only to its own private 4 KiB test buffer, plus clear and size ioctls. It does not read or write another process's memory, physical memory, or arbitrary kernel memory. It contains no process-hiding or anti-cheat functionality.
+This is a diagnostic character driver exposing a private bounded 4 KiB buffer with read/write, clear and size ioctl operations. It does not read or write other processes' memory, game memory, physical memory, or arbitrary kernel memory. It contains no anti-cheat bypass, process hiding, or stealth features.
 
-## Kernel source branches
+## Per-kernel builds
 
-- Linux 5.10: `common-android13-5.10`
-- Linux 5.15: `common-android14-5.15`
-- Linux 6.1: `common-android14-6.1`
+Build a separate module for each exact prepared kernel build tree:
 
-Full Google kernel source trees are fetched separately by the scripts; they are not vendored in this repository. A successful generic GKI build does not imply compatibility with every phone. The Moto G64 5G requires matching Motorola/vendor sources, KMI, configuration, vendor modules and signing policy. Do not flash an image without verifying it for the exact device and firmware.
+```bash
+./scripts/build-module.sh /path/to/prepared/kernel/build
+```
 
-See `driver/`, `scripts/` and `.github/workflows/` for the implementation and build process. Build jobs require substantial disk space and RAM, and must be checked before treating their outputs as device-ready.
+For several kernels:
 
-## Separate module for each exact kernel version
+```bash
+./scripts/build-many-kernels.sh /kernels/4.14/out /kernels/4.19/out /kernels/5.4/out /kernels/5.10/out
+```
 
-The project now includes a per-kernel build path. Use `scripts/build-module.sh <prepared-kernel-build-tree>` once for each exact kernel build. Each successful run creates a differently named artifact such as `linux_kernel_driver-<kernelrelease>-arm64.ko` under `artifacts/per-kernel/`. To build several kernels, pass all prepared build directories to `scripts/build-many-kernels.sh`.
+Artifacts are written under `artifacts/per-kernel/<kernelrelease>-arm64/`. The output uses the exact kernel release reported by Kbuild. A kernel version alone does not guarantee ABI compatibility; use matching source, configuration, generated headers, Module.symvers, compiler and Android KMI/signing policy.
 
-The target range is Linux 4.14 through the latest kernel source supplied to the build system. The listed kernel families are planned targets, not prebuilt or tested releases. A separate exact source/configuration is required for each build; version numbers alone are insufficient, especially for OEM Android kernels. See `compat/BUILD-EACH-KERNEL.md`.
+## Current Android Common Kernel workflow
+
+GitHub Actions currently has manual build targets for ACK branches 5.10, 5.15 and 6.1. This is not yet a complete build matrix for every upstream version or OEM device. Other releases require their own exact prepared kernel source/build tree.
+
+## Motorola Moto G64 5G
+
+For the Moto G64, use the matching Motorola kernel source and exact firmware configuration. A generic ACK/GKI module is not automatically compatible. Do not load or flash an artifact unless the kernel release, ABI/KMI, symbol versions and signing requirements match the running device.
+
+See `compat/BUILD-EACH-KERNEL.md` for build instructions.
