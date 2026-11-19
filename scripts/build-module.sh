@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build one separate module for one exact configured kernel build tree.
+# Build a distinct reverse_exe .ko for one exact prepared kernel build tree.
 # Usage: scripts/build-module.sh <prepared-kernel-build-tree> [output-directory]
 
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
@@ -15,34 +15,21 @@ if [ ! -f "$KDIR/.config" ] || [ ! -f "$KDIR/Makefile" ]; then
   echo "Provide a configured/prepared kernel build tree containing .config and Makefile." >&2
   exit 1
 fi
-
 KERNELRELEASE="$(make -s -C "$KDIR" kernelrelease)"
-if ! grep -q '^CONFIG_ARM64=y' "$KDIR/.config"; then
-  echo "This project currently targets ARM64: CONFIG_ARM64=y is required." >&2
-  exit 1
-fi
+grep -q '^CONFIG_ARM64=y' "$KDIR/.config" || { echo "ARM64 kernel required." >&2; exit 1; }
 
 OUTDIR="${2:-$PROJECT_ROOT/artifacts/per-kernel/$KERNELRELEASE-arm64}"
 mkdir -p "$OUTDIR"
-
-echo "Building for exact kernel release: $KERNELRELEASE"
-echo "Kernel build tree: $KDIR"
-
 make -C "$KDIR" M="$PROJECT_ROOT/driver" modules
 
-MODULE="$PROJECT_ROOT/driver/linux_kernel_driver.ko"
-if [ ! -f "$MODULE" ]; then
-  echo "Expected module was not produced: $MODULE" >&2
-  exit 1
-fi
+MODULE="$PROJECT_ROOT/driver/reverse_exe.ko"
+[ -f "$MODULE" ] || { echo "Expected module not produced: $MODULE" >&2; exit 1; }
 
-cp "$MODULE" "$OUTDIR/linux_kernel_driver-$KERNELRELEASE-arm64.ko"
+ARTIFACT="$OUTDIR/reverse_exe-$KERNELRELEASE-arm64.ko"
+cp "$MODULE" "$ARTIFACT"
 cp "$KDIR/.config" "$OUTDIR/kernel.config"
-if [ -f "$KDIR/Module.symvers" ]; then
-  cp "$KDIR/Module.symvers" "$OUTDIR/Module.symvers"
-fi
+[ ! -f "$KDIR/Module.symvers" ] || cp "$KDIR/Module.symvers" "$OUTDIR/Module.symvers"
 printf '%s\n' "$KERNELRELEASE" > "$OUTDIR/kernelrelease.txt"
-sha256sum "$OUTDIR/linux_kernel_driver-$KERNELRELEASE-arm64.ko" > "$OUTDIR/SHA256SUMS"
-
-echo "Created distinct artifact: $OUTDIR/linux_kernel_driver-$KERNELRELEASE-arm64.ko"
-echo "Use this module only with the exact kernel build used above."
+sha256sum "$ARTIFACT" > "$OUTDIR/SHA256SUMS"
+echo "Created: $ARTIFACT"
+echo "This module is only for the exact kernel build used above."
