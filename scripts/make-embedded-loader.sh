@@ -27,7 +27,7 @@ MODULE_NAME='reverse_exe'
 PAYLOAD_OFFSET=000000000000
 TMPDIR_VANTEX="${TMPDIR:-/data/local/tmp}"
 TMP_KO="$TMPDIR_VANTEX/vantex-$KERNEL_FAMILY-$$.ko"
-ESC=$(printf '\\033')
+ESC=$(printf '\033')
 RED="${ESC}[31m"; GREEN="${ESC}[32m"; YELLOW="${ESC}[33m"
 CYAN="${ESC}[36m"; WHITE="${ESC}[97m"; DIM="${ESC}[90m"
 RESET="${ESC}[0m"; BOLD="${ESC}[1m"
@@ -121,13 +121,13 @@ read_key() {
   OLD_STTY=$(stty -g < /dev/tty 2>/dev/null) || return 1
   stty raw -echo < /dev/tty 2>/dev/null || { OLD_STTY=''; return 1; }
   key=$(dd if=/dev/tty bs=1 count=1 2>/dev/null)
-  if [ "$key" = "$(printf '\\033')" ]; then
+  if [ "$key" = "$(printf '\033')" ]; then
     seq=$(dd if=/dev/tty bs=1 count=2 2>/dev/null)
     case "$seq" in
       '[A'|'[D') SELECTED=$((SELECTED-1));;
       '[B'|'[C') SELECTED=$((SELECTED+1));;
     esac
-  elif [ "$key" = "$(printf '\\r')" ] || [ "$key" = "$(printf '\\n')" ]; then
+  elif [ "$key" = "$(printf '\r')" ] || [ "$key" = "$(printf '\n')" ]; then
     stty "$OLD_STTY" < /dev/tty 2>/dev/null
     OLD_STTY=''
     return 0
