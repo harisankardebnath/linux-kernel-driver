@@ -1,0 +1,140 @@
+name: VANTEX ARM64 kernel module matrix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'driver/**'
+      - 'scripts/**'
+      - 'vantex.sh'
+      - '.github/workflows/vantex-kernel-matrix.yml'
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: "Kernel families to build"
+        required: true
+        default: "4.14,4.19,5.4,5.10,5.15,6.1"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - id: matrix
+        env:
+          TARGETS: ${{ inputs.targets || '4.14,4.19,5.4,5.10,5.15,6.1' }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          allowed = ["4.14", "4.19", "5.4", "5.10", "5.15", "6.1"]
+          requested = [x.strip() for x in os.environ["TARGETS"].split(",") if x.strip()]
+          invalid = sorted(set(requested) - set(allowed))
+          if invalid:
+              raise SystemExit("Unsupported target(s): " + ", ".join(invalid))
+          if not requested:
+              raise SystemExit("Select at least one kernel family")
+          matrix = [{"version": v, "branch": "linux-" + v + ".y"} for v in requested]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write("value=" + json.dumps({"include": matrix}, separators=(",", ":")) + "\n")
+          PY
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ARM64 build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential flex gcc-aarch64-linux-gnu git kmod libelf-dev libssl-dev make python3
+          aarch64-linux-gnu-gcc --version
+
+      - name: Fetch Linux stable source
+        env:
+          BRANCH: ${{ matrix.branch }}
+        run: git clone --depth=1 --single-branch --branch "$BRANCH" https://github.com/gregkh/linux.git kernel
+
+      - name: Prepare ARM64 build tree
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          make -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
+          make -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules_prepare
+          make -s -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- kernelrelease | tee kernelrelease.txt
+
+      - name: Build VANTEX module
+        run: |
+          set -euo pipefail
+          make -C kernel O="$GITHUB_WORKSPACE/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- M="$GITHUB_WORKSPACE/driver" CONFIG_REVERSE_EXE=m modules
+          test -s driver/reverse_exe.ko
+
+      - name: Stage build result
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          DEST="$GITHUB_WORKSPACE/artifacts/linux-$VERSION"
+          mkdir -p "$DEST"
+          cp driver/reverse_exe.ko "$DEST/vantex-$VERSION-arm64.ko"
+          cp kernelrelease.txt "$DEST/"
+          cp out/.config "$DEST/kernel.config"
+          git -C kernel rev-parse HEAD > "$DEST/kernel-commit.txt"
+          modinfo "$DEST/vantex-$VERSION-arm64.ko" > "$DEST/modinfo.txt"
+          sha256sum "$DEST/vantex-$VERSION-arm64.ko" > "$DEST/SHA256SUMS"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vantex-linux-${{ matrix.version }}-arm64
+          path: artifacts/linux-${{ matrix.version }}/
+          if-no-files-found: error
+          retention-days: 14
+
+  package:
+    needs: [prepare, build]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: vantex-linux-*-arm64
+          path: collected
+          merge-multiple: false
+
+      - name: Build aggregate archive and per-kernel loaders
+        run: |
+          set -euo pipefail
+          test -d collected
+          find collected -type f -name '*.ko' -print | sort > MODULES.txt
+          test -s MODULES.txt
+          mkdir -p release loaders
+          cp MODULES.txt release/
+          cp -R collected/* release/
+          (cd release && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          tar -czf vantex-arm64-kernel-matrix.tar.gz -C release .
+          chmod +x scripts/make-embedded-loader.sh
+          scripts/make-embedded-loader.sh collected loaders
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vantex-embedded-sh-loaders
+          path: loaders/*.sh
+          if-no-files-found: error
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vantex-arm64-all-kernels
+          path: vantex-arm64-kernel-matrix.tar.gz
+          if-no-files-found: error
+          retention-days: 30
