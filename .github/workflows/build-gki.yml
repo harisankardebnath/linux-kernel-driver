@@ -25,7 +25,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential clang-14 lld-14 llvm-14 flex git kmod libelf-dev libssl-dev python3 rsync
+          sudo apt-get install -y bc bison build-essential clang-14 lld-14 llvm-14 gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu flex git kmod libelf-dev libssl-dev python3 rsync
           # Linux 5.10 Kconfig probes the unversioned linker name even when LLVM=-14 is used.
           sudo ln -sf /usr/bin/ld.lld-14 /usr/local/bin/ld.lld
           sudo ln -sf /usr/bin/clang-14 /usr/local/bin/clang
@@ -55,9 +55,9 @@ jobs:
           cd "sources/${{ matrix.version }}"
           KOUT="$PWD/out/android12-5.10/common"
           mkdir -p "$KOUT"
-          make -C common O="$KOUT" ARCH=arm64 LLVM=-14 gki_defconfig
+          make -C common O="$KOUT" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=-14 gki_defconfig
           common/scripts/config --file "$KOUT/.config" -m CONFIG_REVERSE_EXE
-          make -C common O="$KOUT" ARCH=arm64 LLVM=-14 olddefconfig
+          make -C common O="$KOUT" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=-14 olddefconfig
           grep -E '^(CONFIG_ARM64=y|CONFIG_REVERSE_EXE=m|CONFIG_MODVERSIONS=)' "$KOUT/.config" || true
 
       - name: Build kernel modules only (no vmlinux or GKI image)
@@ -66,7 +66,7 @@ jobs:
           cd "sources/${{ matrix.version }}"
           KOUT="$PWD/out/android12-5.10/common"
           set -o pipefail
-          make -C common O="$KOUT" ARCH=arm64 LLVM=-14 -j2 modules 2>&1 | tee "$GITHUB_WORKSPACE/modules-build.log"
+          make -C common O="$KOUT" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=-14 -j2 modules 2>&1 | tee "$GITHUB_WORKSPACE/modules-build.log"
           test -f "$KOUT/drivers/misc/reverse_exe/reverse_exe.ko"
 
       - name: Collect ONLY reverse_exe.ko
@@ -77,7 +77,7 @@ jobs:
           MODULE="$KOUT/drivers/misc/reverse_exe/reverse_exe.ko"
           test -f "$MODULE"
           mkdir -p "$STAGE"
-          RELEASE="$(make -s -C "$GITHUB_WORKSPACE/sources/${{ matrix.version }}/common" O="$KOUT" ARCH=arm64 LLVM=-14 kernelrelease)"
+          RELEASE="$(make -s -C "$GITHUB_WORKSPACE/sources/${{ matrix.version }}/common" O="$KOUT" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=-14 kernelrelease)"
           case "$RELEASE" in 5.10.*) ;; *) echo "Unexpected kernel release: $RELEASE" >&2; exit 1;; esac
           cp "$MODULE" "$STAGE/reverse_exe-5.10.ko"
           printf '%s\\n' "$RELEASE" > "$STAGE/kernelrelease.txt"
