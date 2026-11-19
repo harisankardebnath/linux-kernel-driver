@@ -161,7 +161,7 @@ while :; do
   refresh_ui
 done
 __VANTEX_KO_PAYLOAD__
-""" + payload + "\\n"
+""" + payload + "\n"
 
     out = dst / f'vantex-linux-{family}-arm64.sh'
     out.write_text(script)
