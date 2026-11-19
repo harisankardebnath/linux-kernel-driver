@@ -1,43 +1,26 @@
-# Intended compatibility target; not every kernel has been build/load tested.
+# ARM64 Linux 5.10.x target. This is not a universal-binary guarantee.
 architecture: arm64
-minimum_target: "4.4"
-maximum_target: "6.1"
-range: "4.4.x through 6.1.x inclusive"
-build_mode: one_distinct_ko_per_exact_kernel_build
-version_families:
-  - "4.4"
-  - "4.9"
-  - "4.14"
-  - "4.19"
-  - "5.4"
-  - "5.10"
-  - "5.15"
-  - "6.1"
-status: source_compatibility_target_not_fully_tested
-required_inputs_per_build:
-  - exact_kernel_source_and_output_tree
+target_family: "5.10"
+target_range: "5.10.x"
+build_mode: one_distinct_ko_per_exact_device_kernel_build
+filename: "reverse_exe-5.10.ko"
+status: source_target_not_cross_vendor_certified
+vendor_families_intended:
+  - Qualcomm
+  - MediaTek
+  - Samsung_Exynos
+  - Other_ARM64_5.10_vendor_kernels
+required_inputs_per_device_build:
+  - exact_vendor_kernel_source
+  - exact_prepared_kernel_output_tree
   - exact_kernel_config
   - generated_headers
   - Module.symvers_when_CONFIG_MODVERSIONS
-  - matching_toolchain
-filename_pattern: "reverse_exe-<major>.<minor>.ko"
-examples:
-  - "reverse_exe-4.4.ko"
-  - "reverse_exe-4.9.ko"
-  - "reverse_exe-4.14.ko"
-  - "reverse_exe-4.19.ko"
-  - "reverse_exe-5.4.ko"
-  - "reverse_exe-5.10.ko"
-  - "reverse_exe-5.15.ko"
-  - "reverse_exe-6.1.ko"
+  - matching_toolchain_and_build_flags
+  - matching_GKI_KMI_and_module_signing_policy_when_applicable
 artifact_directory: "artifacts/per-kernel/<full-kernelrelease>-arm64/"
-ci_coverage:
-  - "common-android13-5.10"
-  - "common-android14-5.15"
-  - "common-android14-6.1"
-not_covered_by_current_ci:
-  - "4.4"
-  - "4.9"
-  - "4.14"
-  - "4.19"
-  - "5.4"
+ci_baseline:
+  - "Android Common Kernel 5.10"
+not_certified_until_device_build_and_load_test:
+  - "All third-party OEM 5.10.x kernels"
+  - "All vendor configurations and firmware revisions"
