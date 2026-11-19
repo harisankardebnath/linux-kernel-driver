@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       targets:
-        description: "Kernel families to build"
+        description: "Kernel families to build (all supported families by default)"
         required: true
         default: "4.14,4.19,5.4,5.10,5.15,6.1"
         type: string
