@@ -75,13 +75,13 @@ center() {
 draw_menu() {
   term_size
   printf '%b' "${ESC}[2J${ESC}[H${ESC}[?25l"
-  # Keep the compact panel top-centred instead of vertically centring it.
+  # Fixed top placement; all content is centred independently.
   top=2
-  STATUS_ROW=$((top+6)); MENU_ROW=$((top+9)); FOOT_ROW=$((top+16))
-  center "$top" "${CYAN}${BOLD}╔══════════════════════════════════════╗${RESET}"
-  center "$((top+1))" "${CYAN}${BOLD}║             V A N T E X              ║${RESET}"
-  center "$((top+2))" "${CYAN}${BOLD}║          KERNEL MODULE PANEL         ║${RESET}"
-  center "$((top+3))" "${CYAN}${BOLD}╚══════════════════════════════════════╝${RESET}"
+  STATUS_ROW=$((top+6)); MENU_ROW=$((top+9)); FOOT_ROW=$((top+17))
+  center "$top" "${CYAN}══════════════════════════════════════════════════${RESET}"
+  center "$((top+1))" "${CYAN}${BOLD}V A N T E X${RESET}"
+  center "$((top+2))" "${CYAN}${BOLD}KERNEL MODULE PANEL${RESET}"
+  center "$((top+3))" "${CYAN}══════════════════════════════════════════════════${RESET}"
   center "$((top+5))" "${CYAN}Kernel${RESET}  $(uname -r | cut -d- -f1)"
   draw_status
   center "$((top+7))" "${CYAN}----------------------------------------${RESET}"
@@ -116,24 +116,27 @@ refresh_ui() {
 }
 # Read one byte at a time in raw mode so ANSI arrow keys are never echoed.
 read_key() {
-  OLD_STTY=$(stty -g 2>/dev/null) || return 1
-  stty raw -echo min 1 time 1 2>/dev/null || { OLD_STTY=''; return 1; }
+  OLD_STTY=$(stty -g < /dev/tty 2>/dev/null) || return 1
+  stty raw -echo < /dev/tty 2>/dev/null || { OLD_STTY=''; return 1; }
   key=$(dd if=/dev/tty bs=1 count=1 2>/dev/null)
-  case "$key" in
-    "$(printf '\\033')")
-      k2=$(dd if=/dev/tty bs=1 count=1 2>/dev/null)
-      k3=$(dd if=/dev/tty bs=1 count=1 2>/dev/null)
-      key="ESC$k2$k3"
-      ;;
-  esac
-  stty "$OLD_STTY" 2>/dev/null
+  if [ "$key" = "$(printf '\\033')" ]; then
+    seq=$(dd if=/dev/tty bs=1 count=2 2>/dev/null)
+    case "$seq" in
+      '[A'|'[D') SELECTED=$((SELECTED-1));;
+      '[B'|'[C') SELECTED=$((SELECTED+1));;
+    esac
+  elif [ "$key" = "$(printf '\\r')" ] || [ "$key" = "$(printf '\\n')" ]; then
+    stty "$OLD_STTY" < /dev/tty 2>/dev/null
+    OLD_STTY=''
+    return 0
+  elif [ "$key" = q ] || [ "$key" = Q ]; then
+    SELECTED=6
+    stty "$OLD_STTY" < /dev/tty 2>/dev/null
+    OLD_STTY=''
+    return 0
+  fi
+  stty "$OLD_STTY" < /dev/tty 2>/dev/null
   OLD_STTY=''
-  case "$key" in
-    "ESC[A"|"ESC[D") SELECTED=$((SELECTED-1));;
-    "ESC[B"|"ESC[C") SELECTED=$((SELECTED+1));;
-    q|Q) SELECTED=6; return 0;;
-    "$(printf '\\r')"|"$(printf '\\n')") return 0;;
-  esac
   [ "$SELECTED" -lt 1 ] && SELECTED=6
   [ "$SELECTED" -gt 6 ] && SELECTED=1
   return 1
