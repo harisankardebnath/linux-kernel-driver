@@ -37,7 +37,7 @@ EXPECTED_FAMILY='{family}'
 EXPECTED_RELEASE='{release}'
 MODULE_NAME='reverse_exe'
 PAYLOAD_OFFSET=000000000000
-TMPDIR_VANTEX="${TMPDIR:-/data/local/tmp}"
+TMPDIR_VANTEX="${{TMPDIR:-/data/local/tmp}}"
 TMP_KO="$TMPDIR_VANTEX/vantex-$EXPECTED_FAMILY-$$.ko"
 SELF_PATH="$0"
 
@@ -103,7 +103,7 @@ if command -v modinfo >/dev/null 2>&1; then
         "$RUNNING_RELEASE "*) ;;
         *)
             say "[WARNING] Module vermagic does not exactly match the running release."
-            say "          Module: ${MODULE_VERMAGIC:-unknown}"
+            say "          Module: ${{MODULE_VERMAGIC:-unknown}}"
             say "          Running: $RUNNING_RELEASE"
             say '[WARNING] Continuing only with the kernel family check; ABI compatibility is not guaranteed.'
             ;;
