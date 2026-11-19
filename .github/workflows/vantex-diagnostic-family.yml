@@ -39,7 +39,13 @@ jobs:
               raise SystemExit("Unsupported target(s): " + ", ".join(invalid))
           if not requested:
               raise SystemExit("Select at least one kernel family")
-          matrix = [{"version": v, "branch": "linux-" + v + ".y"} for v in requested]
+          matrix = [
+              {
+                  "version": v,
+                  "ref": "v5.10.240" if v == "5.10" else "linux-" + v + ".y"
+              }
+              for v in requested
+          ]
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write("value=" + json.dumps({"include": matrix}, separators=(",", ":")) + "\n")
           PY
@@ -68,8 +74,8 @@ jobs:
 
       - name: Fetch Linux stable source
         env:
-          BRANCH: ${{ matrix.branch }}
-        run: git clone --depth=1 --single-branch --branch "$BRANCH" https://github.com/gregkh/linux.git kernel
+          KERNEL_REF: ${{ matrix.ref }}
+        run: git clone --depth=1 --single-branch --branch "$KERNEL_REF" https://github.com/gregkh/linux.git kernel
 
       - name: Prepare ARM64 build tree
         run: |
