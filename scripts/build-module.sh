@@ -19,7 +19,7 @@ if [ ! -f "$KDIR/.config" ] || [ ! -f "$KDIR/Makefile" ]; then
 fi
 
 KERNELRELEASE="$(make -s -C "$KDIR" kernelrelease)"
-FAMILY="$(printf '%s\\n' "$KERNELRELEASE" | grep -oE '^[0-9]+\\.[0-9]+' || true)"
+FAMILY="$(printf '%s\n' "$KERNELRELEASE" | grep -oE '^[0-9]+\.[0-9]+' || true)"
 if [ "$FAMILY" != "5.10" ]; then
   echo "This project build target is ARM64 Linux 5.10.x; detected: $KERNELRELEASE" >&2
   exit 1
@@ -39,8 +39,8 @@ ARTIFACT="$OUTDIR/reverse_exe-5.10.ko"
 cp "$MODULE" "$ARTIFACT"
 cp "$KDIR/.config" "$OUTDIR/kernel.config"
 [ ! -f "$KDIR/Module.symvers" ] || cp "$KDIR/Module.symvers" "$OUTDIR/Module.symvers"
-printf '%s\\n' "$KERNELRELEASE" > "$OUTDIR/kernelrelease.txt"
-printf '%s\\n' "5.10" > "$OUTDIR/kernel-family.txt"
+printf '%s\n' "$KERNELRELEASE" > "$OUTDIR/kernelrelease.txt"
+printf '%s\n' "5.10" > "$OUTDIR/kernel-family.txt"
 if [ -d "$KDIR/include/generated" ]; then
   find "$KDIR/include/generated" -type f -print0 | sort -z | xargs -0 sha256sum > "$OUTDIR/generated-headers.sha256"
 fi
