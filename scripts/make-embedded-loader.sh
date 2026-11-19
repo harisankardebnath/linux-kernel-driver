@@ -67,26 +67,33 @@ unload_driver() {
 }
 pause_screen() { printf '\\nPress any key to continue...'; IFS= read -r -n 1 _ 2>/dev/null || read -r _; }
 draw_menu() {
-  clear 2>/dev/null || printf '\\033[2J\\033[H'
-  printf "${CYAN}${BOLD}===================================\\n"
-  printf "          VANTEX DRIVER\\n"
-  printf "===================================${RESET}\\n"
-  printf "Kernel: %s\\n" "$(uname -r | cut -d- -f1)"
-  if is_loaded; then printf "Status: ${GREEN}LOADED${RESET}\\n"; else printf "Status: ${RED}NOT LOADED${RESET}\\n"; fi
-  printf "===================================\\n"
+  if [ "${MENU_DRAWN:-0}" -eq 0 ]; then
+    printf '\\033[2J\\033[H'
+    printf "${CYAN}${BOLD}╔══════════════════════════════════════╗\\n"
+    printf "║             V A N T E X              ║\\n"
+    printf "║          KERNEL MODULE PANEL         ║\\n"
+    printf "╚══════════════════════════════════════╝${RESET}\\n"
+    printf "${CYAN}  Kernel  ${RESET}%s\\n" "$(uname -r | cut -d- -f1)"
+    if is_loaded; then printf "  Status  ${GREEN}${BOLD}● LOADED${RESET}\\n"; else printf "  Status  ${RED}${BOLD}● NOT LOADED${RESET}\\n"; fi
+    printf "${CYAN}  ────────────────────────────────────${RESET}\\n"
+    printf "  MODULE CONTROL\\n"
+    MENU_DRAWN=1
+  else
+    printf '\\033[8;1H'
+  fi
   items="Load embedded module|Check status|Unload module|Reload module|View kernel logs|Exit"
   n=1
   oldifs="$IFS"; IFS='|'
   for item in $items; do
     if [ "$n" -eq "$SELECTED" ]; then
-      printf "  ${GREEN}${BOLD}▶ %s) %s${RESET}\\n" "$n" "$item"
+      printf "\\033[%d;1H\\033[2K  ${GREEN}${BOLD}❯  %s  %s${RESET}\\n" "$((7+n))" "$n" "$item"
     else
-      printf "    %s) %s\\n" "$n" "$item"
+      printf "\\033[%d;1H\\033[2K     %s  %s\\n" "$((7+n))" "$n" "$item"
     fi
     n=$((n + 1))
   done
   IFS="$oldifs"
-  printf "\\n${YELLOW}Use ↑/↓ or ←/→ to navigate, ENTER to select${RESET}\\n"
+  printf "\\033[15;1H\\033[2K${YELLOW}  ↑ ↓ / ← →  Navigate     ENTER  Select     Q  Quit${RESET}\\n"
 }
 read_choice() {
   OLD_STTY=$(stty -g 2>/dev/null) || return 1
