@@ -23,7 +23,7 @@ for ko in sorted(src.glob("**/*.ko")):
         raise SystemExit(f"Invalid family: {family!r}")
 
     payload = ko.read_bytes()
-    if not payload.startswith(b"\\x7fELF"):
+    if not payload.startswith(b"\x7fELF"):
         raise SystemExit(f"Not an ELF module: {ko}")
 
     # The marker matches the supplied single-file style. Extraction itself
@@ -127,7 +127,7 @@ exit 1
 exit 0
 #离
 """
-    marker = "#离\\n"
+    marker = "#离\n"
     marker_pos = script.encode("utf-8").index(marker.encode("utf-8"))
     offset = marker_pos + len(marker.encode("utf-8"))
     script = script.replace("PAYLOAD_OFFSET=000000000000", f"PAYLOAD_OFFSET={offset:012d}", 1)
