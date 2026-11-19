@@ -71,7 +71,7 @@ draw_menu() {
   printf "${CYAN}${BOLD}===================================\\n"
   printf "          VANTEX DRIVER\\n"
   printf "===================================${RESET}\\n"
-  printf "Kernel: %s\\n" "$(uname -r)"
+  printf "Kernel: %s\\n" "$(uname -r | cut -d- -f1)"
   if is_loaded; then printf "Status: ${GREEN}LOADED${RESET}\\n"; else printf "Status: ${RED}NOT LOADED${RESET}\\n"; fi
   printf "===================================\\n"
   items="Load embedded module|Check status|Unload module|Reload module|View kernel logs|Exit"
