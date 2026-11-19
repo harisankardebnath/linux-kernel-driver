@@ -1,4 +1,4 @@
-# Target matrix. Planned means the range is intended, not fully tested.
+# Intended compatibility target; not every kernel has been build/load tested.
 architecture: arm64
 minimum_target: "4.4"
 maximum_target: "6.1"
@@ -20,16 +20,16 @@ required_inputs_per_build:
   - generated_headers
   - Module.symvers_when_CONFIG_MODVERSIONS
   - matching_toolchain
-filename_pattern: "reverse_exe-<major>.<minor>.<patch>.ko"
+filename_pattern: "reverse_exe-<major>.<minor>.ko"
 examples:
-  - "reverse_exe-4.4.x.ko"
-  - "reverse_exe-4.9.x.ko"
-  - "reverse_exe-4.14.x.ko"
-  - "reverse_exe-4.19.x.ko"
-  - "reverse_exe-5.4.x.ko"
-  - "reverse_exe-5.10.x.ko"
-  - "reverse_exe-5.15.x.ko"
-  - "reverse_exe-6.1.x.ko"
+  - "reverse_exe-4.4.ko"
+  - "reverse_exe-4.9.ko"
+  - "reverse_exe-4.14.ko"
+  - "reverse_exe-4.19.ko"
+  - "reverse_exe-5.4.ko"
+  - "reverse_exe-5.10.ko"
+  - "reverse_exe-5.15.ko"
+  - "reverse_exe-6.1.ko"
 artifact_directory: "artifacts/per-kernel/<full-kernelrelease>-arm64/"
 ci_coverage:
   - "common-android13-5.10"
