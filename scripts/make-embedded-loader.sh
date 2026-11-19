@@ -5,7 +5,7 @@ OUTPUT_ROOT="${2:-loaders}"
 mkdir -p "$OUTPUT_ROOT"
 python3 - "$INPUT_ROOT" "$OUTPUT_ROOT" <<'PY'
 from pathlib import Path
-import base64, sys
+import sys
 src, dst = map(Path, sys.argv[1:])
 count = 0
 for ko in sorted(src.glob('**/*.ko')):
@@ -17,13 +17,14 @@ for ko in sorted(src.glob('**/*.ko')):
     family = family_file.read_text().strip()
     if not family or any(c not in '0123456789.' for c in family):
         raise SystemExit(f'Invalid kernel family metadata: {family!r}')
-    payload = base64.b64encode(ko.read_bytes()).decode('ascii')
+    payload = ko.read_bytes()
     script = """#!/system/bin/sh
 # VANTEX standalone ARM64 module manager
 set -u
 EXPECTED_RELEASE='"""+release.replace("'","'\\''")+"""'
 KERNEL_FAMILY='"""+family+"""'
 MODULE_NAME='reverse_exe'
+PAYLOAD_OFFSET=000000000000
 TMPDIR_VANTEX="${TMPDIR:-/data/local/tmp}"
 TMP_KO="$TMPDIR_VANTEX/vantex-$KERNEL_FAMILY-$$.ko"
 ESC=$(printf '\\033')
@@ -38,7 +39,7 @@ trap 'exit 130' INT TERM HUP
 is_loaded() { [ -d "/sys/module/$MODULE_NAME" ] || grep -qE "^$MODULE_NAME " /proc/modules 2>/dev/null; }
 extract_payload() {
   mkdir -p "$TMPDIR_VANTEX" || return 1
-  sed '1,/^__VANTEX_KO_PAYLOAD__$/d' "$0" | base64 -d > "$TMP_KO" || return 1
+  dd if="$0" of="$TMP_KO" bs=1 skip="$PAYLOAD_OFFSET" 2>/dev/null || return 1
   [ -s "$TMP_KO" ]
 }
 do_load() {
@@ -160,11 +161,13 @@ while :; do
   SHOW_MSG=''
   refresh_ui
 done
-__VANTEX_KO_PAYLOAD__
-""" + payload + "\n"
-
+__VANTEX_RAW_KO__
+"""
+    marker = "PAYLOAD_OFFSET=000000000000"
+    offset = len(script.encode("utf-8"))
+    script = script.replace(marker, f"PAYLOAD_OFFSET={offset:012d}", 1)
     out = dst / f'vantex-linux-{family}-arm64.sh'
-    out.write_text(script)
+    out.write_bytes(script.encode("utf-8") + payload)
     out.chmod(0o755)
     count += 1
 if not count:
